@@ -20,9 +20,9 @@ Now, assuming that we are working on a regression problem, let's say we want to 
 
 Well, based on the above framework of thinking, there are at least two ways:
 
-1. If we wanted to express the error in general over all possible input values, we could express it as $$ Error = E_{\mathbf{P}}\left[(y_i - f(\mathbf{x}_i))\right] $$ (that's assuming that we want to use the mean squared error as our distance metric). Let's call this the **model-dependent error**, or **MDE** (bear with me for a moment before we get to why this name makes sense).
+1. If we wanted to express the error in general over all possible input values, we could express it as $$ Error = E_{\mathbf{P}}\left[(y_i - f(\mathbf{x}_i))^2\right] $$ (that's assuming that we want to use the mean squared error as our distance metric). Let's call this the **model-dependent error**, or **MDE** (bear with me for a moment before we get to why this name makes sense).
 
-2. If we wanted to express the error in a way that focuses on the influence of the training samples we used to train the model (as opposed to other alternative training sets), we could write $$ Error = E_{\mathcal{X}}\left[(y - f_{\mathcal{X}}(\mathbf{x}))\right] $$. We can call this the **training set independent error**, or **TSIE**.
+2. If we wanted to express the error in a way that focuses on the influence of the training samples we used to train the model (as opposed to other alternative training sets), we could write $$ Error = E_{\mathcal{X}}\left[(y - f_{\mathcal{X}}(\mathbf{x}))^2\right] $$. We can call this the **training set independent error**, or **TSIE**.
 
 As we will see, the distinction between these two is an important one: in the first case, we are taking the weighted sum of the expression inside the brackets over all possible input-output values pairs, while considering the model, $$ f $$ to be fixed; while in the second case, we have a single input-output pair ($$ x $$ and $$ y $$), but we are taking the weighted sum of the expression over all possible models obtained via different training sets.
 
