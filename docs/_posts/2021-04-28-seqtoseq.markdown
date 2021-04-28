@@ -1,0 +1,29 @@
+---
+layout: post
+title: Transforming sequences to sequences (work-in-progress post)
+date: 2021-04-28 19:20:23 +0900
+category: ML
+---
+
+To understand the Seq2Seq model, we need to break down the problem of transforming (variable-length) sequences to (variable-length) sequences into two subproblems.
+
+The first subproblem is how to deal with temporal relationships within the input data (i.e. an earlier part of the sequence influencing later parts of the sequence). Recurrent neural networks! - you might say. And you wouldn't be incorrect, but we need a special class of RNNs in which the span of time at which a given part of the sequence influences later parts is a tunable parameter itself. Enter LSTMs and GRUs, as we will see.
+
+The second subproblem is how to deal with variable-length inputs. The solution to this problem in the Seq2Seq architecture is to parse the input sequences symbol by symbol (or word by word) and use an RNN to generate a context (or 'thought') vector that represents the semantics of the whole sequence. Since the input sequence is often comprised of discrete symbols (as in the case of natural language sentences, which include words from a dictionary), the RNN based transformation is often preceded by a so-called embedding layer.
+
+# LSTMs, GRUs and the like
+
+Let's say we have a distribution $$ \mathbf{P} $$. 
+
+# The Seq2Seq encoder
+
+$$
+\begin{align}
+  TSIE &= E_{\mathcal{X}} \left[ (y - f_{\mathcal{X}}(\mathbf{x}))^2 \right] = \\
+  &= \sum\limits_{i=1}^{I} p_i \left[ y - f_{\mathcal{X}_i}(\mathbf{x})) \right]^2
+\end{align}
+$$
+
+## Embedding layer
+
+If the input sequences are comprised of discrete symbols, a so-called embedding layer can be used, which functions as a kind of lookup table that maps from the index of a given symbol to a vector of length *hidden_len*.
