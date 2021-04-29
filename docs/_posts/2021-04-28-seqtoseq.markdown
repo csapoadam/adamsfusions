@@ -1,29 +1,71 @@
 ---
 layout: post
-title: Transforming sequences to sequences (work-in-progress post)
+title: Transforming sequences to sequences
 date: 2021-04-28 19:20:23 +0900
 category: ML
 ---
 
+Today we'll be discussing a way to learn transformations of sequences of inputs to sequences of outputs using neural networks. The goal is to be able to even learn transformations in which the length of the input and output sequences can be different in each instance - as is the case in natural language sentence translation. The good news is that the so-called **Seq2Seq (sequence-to-sequence) model** can do just that!
+
 To understand the Seq2Seq model, we need to break down the problem of transforming (variable-length) sequences to (variable-length) sequences into two subproblems.
 
-The first subproblem is how to deal with temporal relationships within the input data (i.e. an earlier part of the sequence influencing later parts of the sequence). Recurrent neural networks! - you might say. And you wouldn't be incorrect, but we need a special class of RNNs in which the span of time at which a given part of the sequence influences later parts is a tunable parameter itself. Enter LSTMs and GRUs, as we will see.
+The first subproblem is how to deal with temporal relationships within the input data (i.e. an earlier part of the sequence influencing later parts of the sequence). Think of the sentence: *"Bob said that he wasn't hungry at the time."* The pronoun *"he"* refers to *"Bob"*. Also, since *"Bob"* is a boy's name, we can be sure (barring some unexpected turn of events) that the *"he"* won't be a *"she"*. Perhaps this latter example goes well to show that when thinking about sentence generation in probabilistic terms, the fact that we had a *"Bob"* at the beginning of the sentence increases the probability that a *"he"* should be generated as opposed to a *"she"* later in the sentence. In this way, we can have temporal relationships - at variable lengths! - over the span of the input sequence. So, how should we deal with this problem? *"That's easy: use recurrent neural networks!"* - you might say. And you wouldn't be incorrect, but we need a special class of RNNs in which the span of time at which a given part of the sequence influences later parts is a tunable parameter itself. Enter LSTMs and GRUs, as we will see.
 
-The second subproblem is how to deal with variable-length inputs. The solution to this problem in the Seq2Seq architecture is to parse the input sequences symbol by symbol (or word by word) and use an RNN to generate a context (or 'thought') vector that represents the semantics of the whole sequence. Since the input sequence is often comprised of discrete symbols (as in the case of natural language sentences, which include words from a dictionary), the RNN based transformation is often preceded by a so-called embedding layer.
+The second subproblem is how to deal with variable-length inputs. The solution to this problem in the Seq2Seq architecture is to parse the input sequences symbol by symbol (or word by word) and use an RNN to generate a context (or 'thought') vector, based on that sequence of inputs, that represents the semantics of the whole sequence. Since the input sequence is often comprised of discrete symbols (as in the case of natural language sentences, which include words from a dictionary), the RNN based transformation is often preceded by a so-called embedding layer.
 
-# LSTMs, GRUs and the like
+# 1. LSTMs, GRUs and the like
 
-Let's say we have a distribution $$ \mathbf{P} $$. 
+OK. So let's consider the first problem first. When thinking about models capable of capturing temporal relationships in their input, the first idea that might come to mind is a simple recurrent neural network (RNN), constructed basically as a multi-layer perceptron, but with its outputs fed back as part of the subsequent inputs, like this:
 
-# The Seq2Seq encoder
+<img src="{{site.baseurl}}/public/img/seq2seq/naive-rnn.svg" alt="Naive RNN" class="center-image">
 
-$$
-\begin{align}
-  TSIE &= E_{\mathcal{X}} \left[ (y - f_{\mathcal{X}}(\mathbf{x}))^2 \right] = \\
-  &= \sum\limits_{i=1}^{I} p_i \left[ y - f_{\mathcal{X}_i}(\mathbf{x})) \right]^2
-\end{align}
-$$
+Though seemingly a natural choice, the problem with naive architectures like this one is that training them using backpropagation can easily lead to vanishing and / or exploding gradients, even at time scales that are the least bit interesting. In particular, let's imagine that we are training such a network to generate the sentence *"Bob said that he wasn't hungry at the time."*. Now, let's say that we are at the $$ 4^{th}$$ word and we get a *"she"* instead of a *"he"* (unlikely, but let's assume). Now, when we compute the loss and propagate its derivatives (with respect to each tunable parameter in the network in succession) backwards, we also have to propagate the derivatives backwards through the "arrow of time" - since the derivative of the output of each neuron with respect to its input, at any given point in time (even if in the distance past) will have an influence on the final loss. So these derivatives need to be passed back through the recurrent loop until the beginning of time, and this results in a long chain of multiplications (remember: the chain rule of derivation!). Even if one or two factors within this chain of multiplications is close to zero, the parts of the network that need to learn the most will actually learn the least.
 
-## Embedding layer
+The key idea behind LSTMs (Long Short-Term Memories), GRUs (Gated Recurrent Units) and the like is to alleviate this problem of having to deal with long chains of parametric influence, by directly parameterizing the length of time at which certain inputs will affect the output. Thus, "cells" (more like modules) in such layers are characterized by some combination of components usually referred to as an *input gate*, an *update gate*, a *forget gate*, a *new gate* and an *output gate*. All of these gates operate, directly or indirectly, on some linear combination of inputs and previous outputs, weighted by a set of weights specific to those gates. In layman's terms, the functionality of such layers, then, is to store a set of (transformed) input values for a certain period of time, and then release (a transformed version of) them onwards, to different parts of the network, as soon as the input and previous output fulfill some requirement (indirectly specified via the parameters of the module). This complex functional behavior of storing and releasing values (one should add, in a rather fuzzy formulation, since none of these operations are 'all-or-none') is therefore modeled using a set of parameters that is relatively small, especially in comparison to the alternative of having to unwrap a set of fully connected layers through time.
 
-If the input sequences are comprised of discrete symbols, a so-called embedding layer can be used, which functions as a kind of lookup table that maps from the index of a given symbol to a vector of length *hidden_len*.
+### 1.1 Gated Recurrent Units (GRUs)
+
+Specifically, let's take a look at how a GRU works. GRUs can be considered as a variant of LSTMs, with fewer parameters as they have no *output gate*. Further, it should be noted that there exist several variants of GRUs - in the following we will consider the so-called *fully-gated* variant.
+
+<img src="{{site.baseurl}}/public/img/seq2seq/gru.svg" alt="GRU" class="center-image">
+
+In the figure above, we can see that:
+
+  - the output activation of the module is some combination of the hidden vector (the previous output) and a candidate activation $$ \hat{h} $$, based on a linear interpolation between the two via the *update gate*
+  - the candidate activation, in turn, is some combination of a filtered version of the hidden vector (the previous output) - filtered by the *reset gate* - and the input vector
+
+In general, the behavior of both the reset and update gates are modulated by the input and hidden vectors. Given a specific combination of these values, the *reset gate* can decide to either "zero out" the previous hidden vector from the candidate activation completely, or to allow it to influence the candidate activation to some degree. Similarly, depending on these values, the *update gate* can decide how to weight the direct influence of the hidden vector on the subsequent output activation, relative to the candidate activation.
+
+These two mechanisms enable flexible behaviors in temporal applications. 
+
+### 1.2 Multilayered and multistep GRUs
+
+Note that in the above architecture, the output and the hidden vector (which is passed back to become $$ h[t-1] $$) of the gated recurrent unit are one and the same. But it is possible to create multi-layer GRU architectures, in which the output of one layer is passed on as input to the next. In this case, the output (hidden vector) of the final layer in the architecture is referred to as the output vector, whereas the hidden vector of the architecture is actually a tensor containing the hidden vectors from all of its layers.
+
+It is also possible for a GRU architecture to be "multi-step" in the sense that it expects a sequence of fixed length, with each element of that sequence being a separate input vector. Of course, even in the most basic case, any number of inputs can be provided to a GRU in temporal sequence. But many programming libraries allow a separate sequence length to also be specified, in which case the input vectors fed to the layer are expected to be tensors containing an input vector for each element of the sequence. In this case, the output vector of the architecture is a tensor comprising the output vector of all units in the final layer of the architecture at any given timestep. The hidden vector of the architecture, in turn, is a tensor comprising the hidden vector of all units in all layers of the final timestep.
+
+<img src="{{site.baseurl}}/public/img/seq2seq/multilayered-multistep-gru.svg" alt="MultiGRU" class="center-image">
+
+The figure above should make these points clear. In case a GRU architecture is both multi-layered and multi-step, it can be conceived of as a 2D lattice of GRU units, with the arrow of time represented on the horizontal axis, and the layers of the architecture represented on the vertical axis. The hidden vector produced by each unit on the lattice is passed on both to the next layer at the given timestep, as well as the same layer of the next timestep. But in any case, the multi-step part of this diagram is just syntactic sugar. The same result could be achieved manually by providing the same inputs to the GRU layer step by step, as is demonstrated using the Pytorch example below:
+
+<img src="{{site.baseurl}}/public/img/seq2seq/gru-example-pytorch.svg" alt="MultiGRUPytorchExample" class="center-image">
+
+# 2. The Seq2Seq architecture
+
+The Seq2Seq architecture consists of an encoder and a decoder. The encoder takes a "sentence" (comprised of discrete symbols, like words from a dictionary, and ending with an end-of-sentence, i.e. "EOS" token) of variable length, encodes each word into a vector of fixed length (embedding), and passes the words to a GRU layer in sequence. The hidden vectors provided as output by the GRU can be conceived of as a general representation of the "meaning" of the sentence up until the given point, using a vector of fixed length. The final output of the GRU (its hidden vector after the whole sentence was fed to it) represents the "meaning" of the whole sentence, embedded into a vector of fixed size, *hidden_len*. This vector is often referred to as the *context* of the input sequence.
+
+The decoder, then, takes the hidden vectors generated by the encoder, along with a start-of-sentence (i.e., "SOS") token and starts generating new outputs. It does this by first encoding its input (which at first is the SOS token, and is later the previously generated word) into a vector of fixed length (embedding layer), and providing that representation (transformed using a ReLU layer) as input to a GRU layer, along with the previous hidden vector of the same GRU layer. The output of the GRU layer, then, has two roles: it provides the next hidden input to the same GRU, and is also softmaxed in order to generate a probability distribution over output words. The distribution is sampled to generate a new word, and that new word is also fed back to the previously mentioned embedding layer, allowing for the next output word to be generated.
+
+<img src="{{site.baseurl}}/public/img/seq2seq/seq2seq.svg" alt="Seq2SeqArchi" class="center-image">
+
+#### 2.1 The embedding layer
+
+As we saw in the description above, a so-called embedding layer has a role to play in both the encoder and decoder part of the Seq2Seq model. An embedding layer can be thought of as a lookup table between the dictionary of its possible inputs (with each possible input having an "index" of its own) and output vectors of fixed sizes. Conceptually, an embedding layer is very similar to a linear layer, if the linear layer had as many input dimensions as there are words in a dictionary, and one would provide it with a one-hot encoding of input words.
+
+#### 2.2 Attention
+
+Although the vanilla Seq2Seq architecture presented above can perform well on small datasets, further optimizations can be useful in real-world applications. One possibility is to add an "attention mechanism", such that depending on the hidden vector and previously generated output in the decoder network, different hidden vectors are taken into consideration to a different extent from the encoder network. Recall that upon seeing each input word, the encoder network will internally generate a new hidden vector. If all of these hidden vectors are kept, it is possible for the decoder network to take into consideration different hidden vectors at different points in time (not just the final one).
+
+<img src="{{site.baseurl}}/public/img/seq2seq/seq2seq-attention.svg" alt="Seq2SeqArchiWAttention" class="center-image">
+
+In the figure above, modifications with respect to the vanilla decoder architecture when implementing the attention mechanism are shown in red.

@@ -298,6 +298,13 @@ footer {
 	color: #ccc;
 }
 
+.center-image {
+	display: block;
+	margin-left: auto;
+	margin-right: auto;
+	width: 50%;
+}
+
 
 @media (max-width: 576px) {
 	article {
