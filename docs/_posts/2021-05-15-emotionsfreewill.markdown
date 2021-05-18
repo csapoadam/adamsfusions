@@ -24,7 +24,7 @@ At the same time, I told myself that maybe this was just another area where comp
 
 
 &nbsp;  
-Fast forward to 2021, more than 12 years later when I came across the work of Lisa Feldman Barrett, a professor of neuroscience / psychology. After reading her book, entitled *How Emotions are Made: The Secret Life of the Brain*, published in 2017, I feel I may have come to a new understanding on this topic. What's more, I have a sense that this book actually explains a lot of the conundrums I have pondered in the past decades, including the homunculus problem, the problem of free will and the ontological reality of emotions (i.e., are emotions really something 'out there' to be detected, or are they unique constructions, different for everyone?).
+Fast forward to 2021, more than 12 years later when I came across the work of Lisa Feldman Barrett, a professor of neuroscience / psychology. After reading her book, entitled *How Emotions are Made: The Secret Life of the Brain*, published in 2017, I feel I may have come to a new understanding on this topic. What's more, I have a sense that this book actually explains a lot of the conundrums I have pondered in the past decades, including the homunculus problem, the problem of free will and the ontological reality of emotions.
 
 
 &nbsp;
@@ -34,7 +34,7 @@ Fast forward to 2021, more than 12 years later when I came across the work of Li
 First of all, Lisa Feldman Barrett's book provides a short but plausible explanation of what the brain is for. Sure, it helps us think grandiose thoughts, but its primary purpose - or so the book claims - is to monitor and control our most basic bodily functions, like our heart rate, breathing, hormone balance, metabolism and so on. At first, this might seem boring, but here comes the twist: it would be wasteful and *technically* (biologically? physically?) well-nigh impossible for the brain to achieve this through the classical "perception-decision-action" loop, which is still the standard model for describing goal-oriented action in psychology. If it were the case that preception preceded decision, which preceded action, the brain would have to waste many resources in dealing with any potential input (of all possible inputs) in a timely fashion. For crying out loud, the notion of prior distributions exists for a reason!
 
 
-&nbsp;
+&nbsp;  
 So, instead, what the brain does is it continuously makes predictions based on its previous perceptions - predictions not only about the external world, but also predictions on all the sensory inputs it expects to receive in the near future (including sensory inputs from different organs in the body). In other words, the brain is continuously asking itself: *"when I last came across these perceptions, what happened next? - which of my neurons fired next"?* Depending on the answer, different brain cells prepare themselves to fire, and will be ready to fire when they need to. Interestingly, the book highlights that most of the perceptions that form the basis of such predictions involve sensory inputs from within, as opposed to outside of the body - a phenomenon known as 'interoception'. According to Feldman Barrett, it was a huge discovery of the past decade when scientists realized that much of the brain is quite active even without any external input, due to interoception.
 
 
