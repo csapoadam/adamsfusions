@@ -20,7 +20,7 @@ I remember that at the time this theory didn't make sense to me at a gut level. 
 
 
 &nbsp;  
-At the same time, I told myself that maybe this was just another area where computers would soon become better than humans. Maybe I just had to accept that a computer could recognize my emotions better than I could recognize them myself - that even if I wasn't experiencing what my true emotions were or couldn't identify them at an conscious level, they were still there in a very real sense, waiting to be detected by something or someone more competent than I was.
+At the same time, I told myself that maybe this was just another area where computers would soon become better than humans. Maybe I just had to accept that a computer could recognize my emotions better than I could recognize them myself - that even if I wasn't experiencing what my true emotions were or couldn't identify them at a conscious level, they were still there in a very real sense, waiting to be detected by something or someone more competent than I was.
 
 
 &nbsp;  
