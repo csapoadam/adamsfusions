@@ -1,6 +1,6 @@
 ---
 layout: post
-title: From emotions to free will and back to emotions
+title: From Emotions to Free Will and Back to Emotions
 date: 2021-05-15 20:13:23 +0900
 category:
 - Philosophy
