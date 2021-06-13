@@ -1,0 +1,162 @@
+---
+layout: post
+title: A (Hopefully) Intuitive Introduction to Markov Chain Monte Carlo [Draft!]
+date: 2021-06-10 10:10:15 +0900
+category:
+- StatisticalModeling
+---
+
+Markov Chain Monte Carlo is one hell of a topic! I know I had a difficult time wrapping my head around it. At the same time, I am convinced that this topic shouldn't be hard to understand at a high level. So let's jump into it.
+
+## Why we need it
+
+Remember Bayes' theorem?
+
+It applies to cases where you want to estimate some parameter based on data. Like the mean and standard deviation of the normal distribution that best fits it. Or, to take a more down-to-earth example: you are looking for a diagnosis (what disease someone is inflicted with) based on a set of symptoms (also known as the data).
+
+When dealing with such problems, it is often the case that you cannot solve for the parameter(s) directly. In the diagnosis case, any set individual symptom can be caused by many diseases, and it is no easy task to assign probabilities to the diseases based on a symptom, or set of symptoms.
+
+However, the inverse problem is often easy to handle -- if you know that someone has a disease, you can clearly state, let's say based on some historical data, how probable it is that he or she will experience a certain set of symptoms.
+
+Similarly, if you know the mean and standard deviation of a normal distribution, it is easy to determine the probability of a given data point (or indeed, the probability of the entire dataset, assuming that the samples in the dataset were drawn independently of each other).
+
+So, the first thing to note is that when you are looking for the posterior distribution of a parameter based on some data, the inverse problem (determining the likelihood of the data given a specific parameter value) is much easier.
+
+
+&nbsp;  
+How can one make use of this fact?
+
+Using Bayes' theorem, of course! -- which is just a rearrangement of the equation you get when you break up the joint probability of the data and the parameter (vector) in two different ways:
+
+$$
+\begin{align}
+  P(data, param) &= P(data|param) * P(param) = P(param|data) * P(data) \\
+  P(param | data) &= \frac{P(data|param) * P(param)}{P(data)}
+\end{align}
+$$
+
+The numerator on the right hand side includes the probability we just talked about that is easy to compute -- $$ P(data \| param) $$ can be specified based on historical data. This is the likelihood of the data given the parameter.
+
+$$P(param)$$ is just the prior distribution you assign to the parameter. Obviously, some values will be completely improbable, while others more likely, to begin with. If you are agnostic as to the prior distribution, you can always model it as a uniform distribution between two sensible limits.
+
+The denominator you can just ignore if you normalize the posterior to obtain a distribution -- i.e., P(data) is just a normalization term. Since the data is given a priori, it can be treated as a constant.
+
+Now, what's the deal with MCMC (Markov Chain Monte Carlo)? First, let's take a look at the Monte Carlo part.
+
+## Monte Carlo: A Roulette Wheel of Priors
+
+The idea here is that since usually it is hard to manage these distributions in analytical terms, what is often done is that samples are taken from the prior distribution (each sample will have an associated prior probability), then the likelihood is computed based on the specific parameter value, and the product of the two is used as measure for determining how "believable" the given parameter value is in terms of the posterior. If this is done many times, the hope is that the resulting distribution will hopefully resemble the posterior. Let's consider a simple example.
+
+#### Monte Carlo for distance measurement
+
+Let's assume you are using a laser distance measurer to measure the length of a wall in a room. Your prior assumption is that the real length is somewhere between 3.5 and 4 meters, but you don't have any particular information to go by, so you decide to model the range between the two extremes using a uniform distribution. You also assume that the measurements you make will have some error associated with them, but that the error will have an expected value of 0 and a variance of 10 centimeters, let's say. Now you make some measurements, and you get: 3.6 meters, 3.63 meters, 3.61 meters, and 3.58 meters. Based on that data, what posterior distribution should you assign to the length of the wall?
+
+If you adopt the Monte Carlo approach, what you can do is repeatedly sample from the prior distribution (a value between 3.5 and 4 meters with equal probability), and calculate the product of the probabilities that you would receive each individual measurement, given the supposed real length and based on the error model (this would be your likelihood). By multiplying the two, in each case, you would get an unnormalized measure of the probability of the specific length given the measurements (and your error model). So, imagine that you first get a prior sample of 3.7 meters. Now the likelihood values are:
+
+$$
+\begin{align}
+likelihood(3.60 | 3.7) &= P(measurement = 3.6 | true\ length = 3.7) = \frac{1}{\sqrt{2 \pi 10}} e^{\frac{-(370 - 360)^2}{2 *  \sqrt{10}^2}} = 0.008 \\
+likelihood(3.63 | 3.7) &= \frac{1}{\sqrt{2 \pi 10}} e^{\frac{-(370 - 363)^2}{2 \sqrt{10}^2}} = 0.01 \\
+likelihood(3.61 | 3.7) &= 0.002 \\
+likelihood(3.58 | 3.7) &= 9.42 * 10^{-5}
+\end{align}
+$$
+
+multiplying these numbers together, we get a very small likelihood probability of $$1.5 * 10^{-11}$$. Of course, this isn't really the posterior probability of the real length being 3.7 meters, since it is unnormalized - we would have to multiply by the prior probability of 3.7 meters and divide by the probability of the data to get a distribution. But note that:
+
+  - the probability of any prior value would be the same as that of 3.7 meters, since we have a uniform distribution (theoretically speaking, this would be 0, since the number of values between 3.5 and 4 is infinite -- but if it wasn't the case that this is a uniform distribution, we could always use a probability for values between the prior - epsilon and prior + epsilon, where epsilon is a really small value)
+  - the probability of the data is a constant w.r.t. our experiment, since for any sample from the prior distribution, we would be checking against the same data
+
+So, if we repeat this process again and again and again, we will receive values that are proportional to the posterior distribution by some factor. Let's do this twice more!
+
+For a sample from the prior of true length = 3.61 we get likelihood values of 0.12, 0.1033, 0.126, 0.08, the product of which is 0.000125
+
+For a sample from the prior of true length = 3.65 we get likelihood values of 0.036, 0.1033, 0.0567, 0.08, the product of which is 1.68 * 10^(-5)
+
+Do you see where this is going? So far, the unnormalized likelihood for length = 3.61 was the highest. This is something to go by if we want to find the most likely value of the true length. On the other hand, we would need many trials, basically spanning the full range between 3.55 and 3.65 meters. *Further, if we really wanted to estimate the true posterior, we would have to calculate the unnormalized posterior for the entire set of prior values (or some uniformly - and minutely - discretized version of that set).* Whatever the case, both observations suggest that a more difficult problem in higher dimensions would surely yield an exponential blow-up of complexity! So in the general case it would be well-nigh impossible to actually draw this quasi-distribution, not to mention to scale it appropriately, which would require you to integrate the whole distribution (across n dimensions!). Enter the idea of Markov Chain Monte Carlo.
+
+# Efficiency = MCMC (Squared)
+
+The idea behind MCMC is that instead of taking independent samples from the prior distribution, you always take a new sample based on the previous posterior sample (in truth, *you take a candidate prior sample which is either accepted or rejected as being a true sample from the posterior*). Since in each case, the new (candidate) sample will depend only on the previous posterior sample, not on earlier ones, the Markov property holds and hence the name *Markov Chain Monte Carlo*. But more to the point: the idea is that if you consider only the accepted candidate samples - or so the mathematics shows - they will represent valid samples from the posterior distribution! Then, by taking enough samples, you can get an estimate for the posterior. You don't even have to explicitly compute unnormalized posteriors, the only important thing is that the criterion, according to which you accept or reject candidate samples, have something (reasonable) to do with the likelihood term.
+
+So how do you generate new candidate samples, and what is the criterion for acceptance? This is where the different methods deviate from each other (and there are many, many methods, including different variants of the Metropolis-Hastings algorithm, the Hamiltonian MCMC method and more). Let's take a look at a simple example first: the random walk Metropolis Hastings method.
+
+#### Random Walks with Metropolis Hastings
+
+Using this method, what you do is you take an initial value for the parameter - let's say, 3.7 in our case of measuring length. In each step, you take the new candidate value from a normal distribution centered around the previous paramter value (the variance of that distribution is a hyperparameter). Here, this particular normal distribution is referred to as the *generating distribution*. So in our example, using 3.7 meters as a starting value, let's say you now sample a candidate value of 3.65 meters (from the generating distribution centered around 3.7). Now, you calculate an $$ \alpha $$ value to help determine whether to accept or reject the candidate sample:
+
+$$
+\alpha = \frac{unnormalized\_posterior(3.65)}{unnormalized\_posterior(3.7)} = \frac{1.68 * 10^{-5}}{9.42 * 10^{-5}}
+$$
+
+If $$ \alpha $$ is greater than 1, this means that you have found a candidate parameter value that is more likely than the previous one (as in our case), so you can keep it!
+
+If $$ \alpha $$ is less than 1 (but by definition greater than or equal to 0, since all unnormalized posterior values are non-negative values), you can still keep the candidate value with a probability of $$ \alpha $$ (and reject it with a probability of $$ 1 - \alpha $$.
+
+So this shows the general idea behind MCMC. You sample new candidate (prior) samples based on previous ones, and generally keep them as posterior samples if they seem better based on the unnormalized posterior, which you have access to. If they aren't better, you can still keep them some fraction of the time, to keep the process from getting stuck forever in the (locally) best of locations.
+
+#### Other variants of Metropolis Hastings
+
+Of course, random walk Metropolis-Hastings based MCMC is just one of many options. In different variants of Metropolis-Hastings, a generating distribution other than the uniform distribution around the previous sample can be used. And if the distribution is not symmetrical about the previous posterior sample, then the formula for calculating $$ \alpha $$ becomes more complicated (a so-called Hastings-term is also taken into consideration, which is the probability of the generating distribution producing the previous sample based on the new candidate sample, divided by the probability of the generating distribution producing the new candidate sample based on the previous sample) -- i.e., $$ \alpha $$ becomes (supposing that the new candidate parameter is $$ \theta^{c} $$, the previous posterior sample is $$ \theta $$, and the generating distribution is denoted by $$g$$:
+
+$$
+\alpha = \frac{unnormalized\_posterior(\theta_{candidate})}{unnormalized\_posterior(\theta_{prev})} * \frac{P(g(\theta | \theta^{c}))}{P(g(\theta^{c} | \theta))}
+$$
+
+The Hastings-term penalizes the generation of candidate samples that are hard to revert, so to speak. That is, if the probability of returning to the previous sample based on the new candidate sample (if it were to be accepted) is relatively low (compared to how easy it was to generate the new candidate sample), then that candidate sample is penalized. The situation can be salvaged (to nevertheless obtain an $$ alpha $$ value that is greater than 1) only if the new candidate sample really, truly leads to a higher unnormalized posterior than the previous sample did.
+
+#### Hamiltonian MCMC
+
+Another MCMC approach is Hamiltonian MCMC. In this case, a physical analogy from statistical mechanics is used to model the movement of an imaginary particle, which basically follows the inverse of the unnormalized posterior function (picture an inverted Gaussian curve, such that the particle rolls towards its bottom, where the original posterior function has its highest value).
+
+In other words, instead of using an analytic generating distribution -- like the normal distribution centered around the previous posterior sample, as in the case of random walk Metropolis Hastings -- this model generates new candidate samples by solving for the new location of the imaginary particle on the inverse of the unnormalized posterior function, using a physical model that includes kinetic energy (momentum) and gravitational energy (determined by the "height" of the previous posterior sample on the inverted unnormalized posterior function).
+
+The benefit of using Hamiltonian MCMC is that this physical analogy seems to extend quite well to high-dimensional parameter spaces. Just like stochastic gradient descent has a lot going for it (based on empirical evidence) in high-dimensional spaces, taking an imaginary particle that "rolls" around within this inverted probability space based on its momentum and based on gravity -- understandably -- should display similar characteristics.
+
+#### So what does the Hamiltionian model look like?
+
+The model itself involves an energy level, which depends on the kinetic and gravitational energy of the particle. The kinetic energy, in turn, depends on its momentum, and the gravitational energy depends on the current posterior sample. Given a frictionless environment, the sum of the kinetic and gravitational energy should be a constant, expressed as:
+
+$$
+E(\theta, M) = KineticE(M) + GravitationalE(\theta) = constant
+$$
+
+The probability distribution of the total energy level, in turn, is modeled based on the Boltzmann function in statistical mechanics:
+
+$$
+P(E(\theta, M)) = e^{\frac{-E(\theta, M)}{T}} = e^{\frac{-KineticE(M) - GravitationalE(\theta)}{T}} = constant
+$$
+
+where $$ T $$ is the temperature of the system, which we can assume to be 1.
+
+###### Kinetic and gravitational energy
+
+The kinetic energy, if you recall from high school, is $$\frac{1}{2} mass * velocity^2 $$, which is the same as $$0.5 * mass * velocity * velocity$$, which is the same as $$0.5 * M * M / mass$$, therefore: $$ \frac{M^2}{2 * mass} $$. We can also set the mass to be equal to 1, which would yield a kinetic energy of $$ \frac{M^2}{2}.
+
+The gravitational energy can be taken to be $$ -\log [P(data\|parameter) * P(parameter] $$, which is just the negative log of the unnormalized posterior function from above (the '*negative log posterior space*').
+
+So, returning to the probability, we have that:
+
+$$
+P(E(\theta, M)) = e^{-\frac{M^2}{2}} * e^{log(P(data|parameter) * P(data))} = P(data|parameter) * P(data) * e^{-\frac{M^2}{2}}
+$$
+
+, assuming that the mass and the temperature are 1. Now, forgetting about the energy concept, the two sides of the equation should still be in proportion. So we have that:
+
+$$
+P(\theta, M) \propto P(data|parameter) * P(data) * e^{-\frac{M^2}{2}}
+$$
+
+Now it is clear that the last factor in the equation has the functional shape of a normal distribution. We can actually take it to be the PDF of a normal distribution, if we normalize the whole right hand side with an appropriate constant Z.
+
+But we can also see that this third factor is independent of the previous two, so if we want to integrate out the momentum from the joint distribution, we have that:
+
+$$
+P(\theta) = \frac{1}{Z} * P(data|parameter) * P(parameter) * \int PDF\_of\_normal * d M
+$$
+
+Here, the last factor in the product is 1, while all other factors are independent of the momentum M, and can thus be factored out. Thus, we can see that the parameter vector $$ \theta$$ and the momentum $$ M $$ are independent of each other, and the task in each iteration is to:
+
+  - take a sample of the momentum $$ M $$ from a normal distribution: $$ M \sim \mathcal{N}(0,1) $$
+  - consider the previous posterior sample: $$ \theta $$
+  - use the two to solve for the new candidate value, $$ \theta^c $$, and the new momentum $$ M^c $$ by considering the kinetic and gravitational energy of the particle. Often, this is done by assuming discrete timesteps and using the so-called *leap frog algorithm*.
