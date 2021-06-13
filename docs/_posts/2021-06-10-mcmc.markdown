@@ -160,4 +160,4 @@ Here, the last factor in the product is 1, while all other factors are independe
   - take a sample of the momentum $$ M $$ from a normal distribution: $$ M \sim \mathcal{N}(0,1) $$
   - consider the previous posterior sample: $$ \theta $$
   - use the two to solve for the new candidate value, $$ \theta^c $$, and the new momentum $$ M^c $$ by considering the kinetic and gravitational energy of the particle. Often, this is done by assuming discrete timesteps and using the so-called *leap frog algorithm*.
-  - next, you can just forget about $$ M $$ and just use the obtained value of  $\theta^c$ as the new $$\theta$$
+  - next, you can just forget about $$ M $$ and just use the obtained value of  $$\theta^c$$ as the new $$\theta$$
