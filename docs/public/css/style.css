@@ -89,6 +89,7 @@ code {
 	/*margin-left: 180px;*/
 	flex: 1 1 auto;
 	padding: 0px 30px;
+	text-align: justify;
 }
 
 .sidebar {
@@ -223,7 +224,7 @@ blockquote {
 
 p {
   margin-top: 0;
-  margin-bottom: 0;
+  margin-bottom: 30px;
 }
 
 article h1,
