@@ -7,13 +7,16 @@ category: SoftwareDesign
 
 A growing number of blog posts and videos are dedicated to the topic of what monads are and why they are really cool. And yet, readers and viewers often complain that the *monadic curse* still hasn't been broken for them.
 
-In this post I will do my best to convince you that actually, monads are not *that* arcane. Here's my crack at explaining what challenges they solve and why you should just use them, without worrying too much about their definition. I will claim that monads basically offer a clean and elegant way to manage side effects in your code. To show this, let's first take a detour into the world of functors, and then return to our *mouton du jour*.
+In this post, my goal is to convince you that actually, monads are not *that* arcane. Here's my crack at explaining what challenges they solve and why you should just use them, without worrying too much about their definition. The main point I want to make is that from a practical perspective, monads offer a clean and elegant way to manage side effects (including change of state) in your code. To show this, let's first take a detour into the world of functors, and then return to our main topic.
 
-# Monads (and also functors) offer a nice way to clean up the client side of your code
+# Functors offer a nice way to clean up the client side of your code
 
-First of all, what do I mean by *client code*? In this post, I refer to the code that makes use of some pre-defined data structures to achieve some concrete functionality as *client code*. This is in contrast to the part of the code that defines the data structures being used (which would be the *server code*, at least in this terminology).
+First of all, what do I mean by *client side code*? In this post, I refer to the code that makes use of some pre-defined data structures to achieve some concrete functionality as *client side code*. This is in contrast to the part of the code that defines the data structures being used (which would be the *server side code*).
 
-Now, to motivate both functors and monads, let's take a look at how one might approach writing down a series of transformations -- first, using an imperative style. For the sake of clarity, we will consider some very simple arithmetic transformations in Javascript ES6 - which should be understandable to you even if you've never ever done any programming in Javascript:
+
+### Some problems with the imperative style
+
+Now, to motivate both functors and monads, let's take a look at how one might approach writing down a series of transformations -- first, using an imperative style. For the sake of simplicity, we will consider some very simple arithmetic transformations in Javascript ES6 - which should be understandable to you even if you've never ever done any programming in Javascript:
 
 {% highlight javascript %}
 let x = 5;
@@ -23,9 +26,11 @@ let w = x + 2;
 console.log('result is:', w); // should print 77
 {% endhighlight %}
 
-It should be clear that we are computing a rather simple algebraic expression; however, one really needs to read through the code with careful attention to understand how the value of each variable changes through time and what the end result is. That's because in this way of programming, there are no constraints between the lines of code that follow each other -- neither in terms of the variables on the left-hand side (and how they relate to each other), nor in terms of the variables (values) referenced on the right-hand side of each assignment.
+It should be clear that we are computing a rather simple algebraic expression; however, one really needs to read through the code with careful attention to understand how the value of each variable changes through time and what the end result is. That's because in this way of programming, there are no constraints between the lines of code that follow each other -- neither in terms of the variables on the left-hand side (and how they relate to each other), nor in terms of the variables (values) referenced on the right-hand side of each assignment. The main point is not that it's impossible to write more elegant code in the imperative style; but that even if you do, you will still have to pay careful attention to dependencies between variables and the operations that are being carried out at the same time.
 
-To see why this is inelegant, let's take a look at how might one approach the same problem in a more functional way. One idea that's often useful is to encapsulate (or *lift*) the value we are *"working on"* inside a higher-order structure (which would constitute the server code), and to use *map()* to perform the transformations:
+### The case for Functors
+
+To see why this is inelegant, let's take a look at how might one approach the same problem in a more functional way. One idea that's often useful is to encapsulate (or *lift*) the value we are *"working on"* inside a higher-order structure (which would constitute the server side of your code), and to use *map()* to perform the transformations:
 
 {% highlight javascript %}
 class NumberContainer {
@@ -38,73 +43,197 @@ class NumberContainer {
     }
 }
 
-let x = new NumberContainer(5);
-let w = x
-    .map(val => Math.pow(val, 2))
-    .map(val => val * 3)
-    .map(val => val + 2)
+const pow2 = val => Math.pow(val, 2);
+const mul3 = val => val * 3;
+const add2 = val => val + 2;
+
+let w = new NumberContainer(5)
+    .map(pow2)
+    .map(mul3)
+    .map(add2)
     .map(val => console.log('result is:', val))
 {% endhighlight %}
 
-How is this better? Notice that on the *client side* at least (the part of the code starting with the definition of *x*, that makes use of the pre-defined data structure -- *NumberContainer* -- to compute the result), it is much easier to see what is going on. **Instead of having to trace, through time, which variables are overwritten when, and how those writes influence subsequent operations, *map()* will guarantee under the hood that it is always the previous result that is being operated on, and that interim results are never mutated. Now, the only task remaining for the programmer is to consider what transformations are being carried out -- in this case: Math.pow, times 3, and plus 2.**
+How is this better? Notice that on the *client side* at least (the part of the code starting with *let w*, that makes use of the pre-defined data structure -- *NumberContainer* -- to compute the result), it is much easier to see what is going on. **Instead of having to trace, through time, which variables are overwritten when, and how those writes influence subsequent operations, *map()* will guarantee under the hood that it is always the previous result that is being operated on, and that interim results are never mutated. Now, the only task remaining for the programmer is to consider what transformations are being carried out -- in this case: Math.pow, times 3, and plus 2.** Thus, we have cleanly separated the data management aspects from the functional (operational) aspects of the computations we are carrying out.
 
-It took me quite some time to realize that the *map()* function is *this* generic. For the longest time, I thought it was just a way to carry out the same transformation on all elements of a container like a *List* or an *Array* (in this case, you'd be *mapping* the same function over all elements of the container). But in a more abstract sense, structures that provide a *map()* function really just provide a way to chain transformations in a functional way without the programmer having to concentrate on memory management. In other words, the defining feature of *map()* is not that it operates on multiple elements, but that it can be called multiple times (i.e., *chained*) to reap the above-mentioned benefits. (Think of a sequence of *map()* operations called on a list, instead of the transformation carried out on each element of the list in each call to *map()*.)
+It took me quite some time to realize that the *map()* function is *this* generic. For the longest time, I thought it was just a way to carry out the same transformation on all elements of a container like a *List* or an *Array* (my thinking went that in this case, you'd be *mapping* the same function over all elements of the container). But in a more abstract sense, structures that provide a *map()* function really just provide a way to chain transformations in a functional way without the programmer having to concentrate on memory or dependency management. In other words, the defining feature of *map()* is not that it operates on multiple elements, but that it can be called multiple times (i.e., *chained*) to reap the above-mentioned benefits. (Think of a sequence of *map()* operations called on a list, instead of the transformation carried out on each element of the list in each call to *map()*.)
 
 Data structures that support **map()** in this way are known as **functors** in the functional programming paradigm. We could say that a functor is a *Functor F of type T* if the type of the value that it can wrap is of type *T* (in our earlier example, based on the client code at least, *T* was a numeric type). Functors are really great, but one limitation they have is that using *map()*, the only kinds of functions that you can chain together are the kinds of functions that take a single input of this type *T*, and return a value of the same type (*f: T -> T*).
 
 Of course, you will always need to stick to at least *some* rules if you want to chain anything together. Nevertheless, it is still the case that *map()* will only ever allow you to chain together functions (transformations) of one type. A different kind of transformation we might want to consider is one that takes as input some type *T*, and returns a *Functor F of type T* (instead of just type *T*). For example, you couldn't use map in this way:
 
 {% highlight javascript %}
-let x = new NumberContainer(5);
-let w = x
+let w = new NumberContainer(5)
     .map(val => new NumberContainer(Math.pow(val, 2)))
     .map(val => new NumberContainer(val * 3))
     .map(val => new NumberContainer(val + 2))
     .map(val => console.log('result is:', val))
 {% endhighlight %}
 
-In this case, each function we are mapping takes an input of numeric type and returns a numeric value wrapped into the functor. But this cannot work, because the second function we are mapping would receive a *NumberContainer* containing another *NumberContainer* (instead of a numeric value), and would try to multiply that internal *NumberContainer* by *3*. How sad! To achieve this kind of functionality, we need a new kind of map, which is often referred to as *bind()* or *flatmap()*:
+That's because from the second call to *map()* onwards, each mapped function is expecting to receive as its input a numeric value... not a *NumberContainer* object created in the previous step. If we wanted to chain functions like these (for some reason), we would need to use a different kind of *map()*, which is often referred to as *bind()* or *flatmap()*:
 
 {% highlight javascript %}
-class NumberContainer2 {
+class NumberContainerWithBind {
     constructor(val) {
         this.value = val;
     }
     
     map(fn) {
-        return new NumberContainer(fn(this.value));
+        return new NumberContainerWithBind(fn(this.value));
     }
 
     bind(fn) {
-    	return fn(this.value);
+        return fn(this.value);
     }
 }
 
-let x = new NumberContainer2(5);
-let w = x
-    .bind(val => new NumberContainer2(Math.pow(val, 2)))
-    .bind(val => new NumberContainer2(val * 3))
-    .bind(val => new NumberContainer2(val + 2))
-    .bind(val => console.log('result is:', val))
+const pow2wrapped = val => new NumberContainerWithBind(Math.pow(val, 2));
+const mul3wrapped = val => new NumberContainerWithBind(val * 3);
+const add2wrapped = val => new NumberContainerWithBind(val + 2);
+
+let x = new NumberContainerWithBind(5)
+    .bind(pow2wrapped)
+    .bind(mul3wrapped)
+    .bind(add2wrapped)
+    .bind(val => console.log('result from NumberContainerWithBind is:', val))
+
 {% endhighlight %}
 
-Data structures that support both **map()** and **bind()** in this way are known as **monads**. Based on this example, monads might not seem all that interesting... but in fact, they are really, really interesting for many applications. The main reason for this is that  **in the case of a functor, the creation of the next functor in the map() chain is hard-coded inside the map() function within the functor; whereas in the case of a monad, it is always the function that you are binding (which is external to the monad) that will create the new monad**. What this means is that in the monad pattern, the client code has more flexibility in determining how the next monad in each step is parameterized.
+But why would we want to do this in the first place?
 
-This latter point is an often neglected aspect of monads. Often, it is claimed that monads are useful because they automatically flatten the monad that would result from calling *map()* (hence the name *flatmap()*, which is often used instead of *bind()*)... however, the flip side of this is that now, in the case of monads, the internal monad that gets flattened is also created elsewhere in the code (in the client part). This makes for some very flexible ways to structure one's code!
+### A glimpse into what bind() has to offer
+
+To see why the distinction between *map()* and *bind()* is crucial, let's consider a wallet application that can keep track of denominations in different currencies. We can define the *Denomination* and *WalletState* classes as follows:
+
+{% highlight javascript %}
+class Denomination {
+    constructor(amount, currency) {
+        this.currency = currency;
+        this.amount = amount;
+    }
+}
+
+class WalletState {
+    constructor(denominations = [], transactions = []) {
+        this.denominations = denominations;
+        this.transactions = transactions;
+    }
+
+    clone() { // will be useful since map() and bind() have to ensure that no variables are mutated
+        let denominations = this.denominations.map(elem => Object.assign({}, elem));
+        let transactions = this.transactions.map(elem => elem);
+        return new WalletState(denominations, transactions);
+    }
+}
+{% endhighlight %}
+
+A *Wallet*, in turn, is just an object that holds any number of denominations, and also stores a history of transactions. In addition, let's say that the wallet can have a type, such as *basic* or *premium*:
+
+{% highlight javascript %}
+class Wallet {
+    constructor(walletState, type = 'basic') {
+        this.state = walletState;
+        this.type = type;
+    }
+
+    map(fn) { // fn takes a WalletState object, and returns another WalletState object
+        // since the new Wallet is instantiated within map(), fn is only concerned with transformations on the state
+        return new Wallet(fn(this.state.clone()), this.type);
+    }
+
+    bind(fn) { // fn takes a WalletState object, and returns a new Wallet object.
+        // Now, it's fn that gets to decide how to parameterize the new Wallet
+        return fn(this.state.clone());
+    }
+}
+{% endhighlight %}
+
+Based on the comments in the code, you might already see that the question of whether to use *map()* and *bind()* will hinge on whether you want to apply functions to the Wallet object that focus only on transformations to its state, or instead operate at a higher level of generating new Wallet objects.
+
+Specifically, when using *map()*, the client side code will defer the creation of the new Wallet to the code inside the *map()* function based on its own logic; whereas in the case of *bind()*, it's the client side that gets to determine the way in which the new Wallet is constructed (for example, it can even change the type of the wallet, which is simply kept at its previous value in *map()*).
+
+The point is not that an implementation of *map()* couldn't -- in theory -- support the use of functions that also return a wallet type and then use the returned value to instantiate the new Wallet; the point is that there can always exist some aspects (i.e., parameters) of the newly created object that are better specified on the client side. Even if our implementation of *map()* allowed for the function being mapped to specify, through its return value, all parameters of the newly created Wallet, it could still be the case that multiple constructors for the Wallet type exist, and the decision of which one to call is better handled on the client side.
+
+As an example for both of these use cases, consider the following listing:
+
+{% highlight javascript %}
+const addAmount = (denomination) => {
+    return (wstate) => {
+        let inx = wstate.denominations.findIndex(denom => denom.currency == denomination.currency);
+        if (inx > -1) {
+            wstate.denominations[inx].amount += denomination.amount;
+        } else {
+            wstate.denominations.push(new Denomination(denomination.amount, denomination.currency));
+        }
+        wstate.transactions.push('Added ' + denomination.amount + ' ' + denomination.currency);
+        return wstate;
+    }
+}
+
+const payAmount = (denomination) => {
+    return (wstate) => {
+        let inx = wstate.denominations.findIndex(denom => denom.currency == denomination.currency);
+        if (inx > -1 && wstate.denominations[inx].amount >= denomination.amount) {
+            wstate.denominations[inx].amount -= denomination.amount;
+            wstate.transactions.push('Deducted ' + denomination.amount + ' ' + denomination.currency);
+        } else {
+            wstate.transactions.push('Insufficient funds to pay ' + denomination.amount + ' ' + denomination.currency);
+        }
+        return wstate;
+    }
+}
+
+const printWallet = (wallet) => {
+    console.log('Wallet type:', wallet.type, '. Denominations in wallet:');
+    wallet.state.denominations.forEach(elem => { console.log(elem.amount, elem.currency)});
+    console.log('\tTransactions:');
+    wallet.state.transactions.forEach(elem => { console.log('\t\t', elem)});
+}
+
+const myWallet1 = new Wallet(new WalletState());
+const myWallet2 = myWallet1
+    .map(wstate => addAmount(new Denomination(5, 'usd'))(wstate))
+    .map(wstate => addAmount(new Denomination(15, 'usd'))(wstate))
+    .map(wstate => addAmount(new Denomination(12000, 'jpy'))(wstate))
+    .map(wstate => payAmount(new Denomination(3, 'usd'))(wstate))
+    .map(wstate => payAmount(new Denomination(50, 'eur'))(wstate))
+    .map(wstate => payAmount(new Denomination(3000, 'jpy'))(wstate));
+
+const makePremium = (wstate) => {
+    return new Wallet(wstate, 'premium')
+}
+
+const myWallet3 = myWallet2
+    .bind(makePremium)
+    .map(wstate => addAmount(new Denomination(500, 'eur'))(wstate));
+
+printWallet(myWallet1); // should still be empty!
+printWallet(myWallet2); // should still be a basic account with 17 usd and 9000 jpy
+printWallet(myWallet3); // should be a premium account with 17 usd, 9000 jpy and 500 eur
+{% endhighlight %}
+
+
+### Monads = Functors with bind()
+
+Data structures that support both **map()** and **bind()** in the way described above are known as **monads**.
+
+Based on the above examples, we can formulate the difference between functors that provide a *map()* function and monads that provide both *map()* and *bind()* functions more generally as follows: **In the case of a functor, the creation of the next functor in the map() chain is hard-coded inside the map() function within the functor; whereas in the case of a monad, it is always the function that you are binding (which is external to the monad) that will create the new monad**. What this means is that in the monad pattern, we get to choose whether it's the server side (*map()*), or the client side (*bind()*) that should be given more flexibility in determining how the next monad in each step is created; whereas in the case of functors, the client side can have nothing to do with the higher-level concepts used by the functor (and are only concerned with values of some type that are wrapped by the functor).
+
+This latter point is an often neglected aspect of monads. Often, it is claimed that monads are useful because they automatically flatten the monad that would result from calling *map()* (hence the name *flatmap()*, which is often used instead of *bind()*)... however, the flip side of this is that now, in the case of monads, the internal monad that gets flattened is also created elsewhere in the code (on the client side). This makes for some very flexible ways to modify the behavior of the monad.
 
 A good example is the *Promise* type that is used in many languages to represent asynchronous operations that will complete sometime in the future. In Javascript, when you call *.then(...)* on a Promise object, what you are actually doing is binding a function (passed as a parameter to *then()*) to the Promise monad. However, since it is the function that is being bound that will create the next Promise in the chain, it has the flexibility of specifying the next asynchronous operation to be carried out; all the rest (e.g., waiting for the previous asnyc calls to return) is handled by *then()*.
 
-# Monads offer a way to work with side effects in a controlled way
+# A not so short epilogue: Monads also offer a way to work with side effects in a controlled way
 
-Now that we understand the above points, we're basically done! The bottom line is that to make your client code more functional, more elegant, it is often a good idea to lift your basic data types into higher-level functors or monads, and to carry out transformations or operations on them using *map()* or *bind()*.
+Now that we understand the above points, we're basically done! The bottom line is that in order to make your client code more functional, more elegant, it is often a good idea to lift your basic data types into higher-level functors or monads, and to carry out transformations or operations on them using *map()* and / or *bind()*.
 
-However, before we go out to celebrate, there is one other big advantage of using monads that I'd like to point out to you. This advantage is that monads also incidentally offer a way to work with side effects in a controlled way.
+But before we go out to celebrate, there is one other big advantage of using monads that I'd like to point out to you. This advantage is that monads also incidentally offer a way to work with side effects (like state change, user input, database read operations, etc.) in a controlled way.
 
 You see, in functional programming, the goal is to keep one's code side-effect free at (almost) all costs. At first, I wanted to say *'at all costs'*, because side effects are yucky: they cause your code to behave differently even if you give it the same input, and therefore, they make your code harder to test. Also, very often, once you decide to allow side effects, calls to those side effects get scattered all over the code base (think of a logging function being called from all over the place). Note, however, that I wrote *'at (almost) all costs*, because in practice, any interesting program has to have side effects (like interact with user input, with a database or a network).
 
 The way that this conundrum is often solved in functional programming is to lift the data types of interest into higher-level constructs (objects) that also represent side effects. The key point is that instead of considering side effects as an *action* -- as something that is carried out -- in functional programming, they are often reified as *objects*. For example, instead of printing something to the console, we can keep binding to a print object (whose *bind()* function does the printing). In this way, at least the types we are using offer a strong clue that something fishy is going on.
 
-Let's take a look at an example (a simple variation of the above example) to illustrate this point. If you wanted to log all of the interim results in the series of calculations, you could write:
+Let's take a look at an example (a simple variation of our initial example) to illustrate this point. If you wanted to log all of the interim results in a series of calculations, you could write:
 
 {% highlight javascript %}
 class VerboseArithmetics {
@@ -123,19 +252,19 @@ let pow2 = val => Math.pow(val, 2);
 let mul3 = val => val * 3;
 let add2 = val => val + 2;
 
-let makeVerbose = (val, op, msg) => new VerboseArithmetics(op(val), msg + op(val));
+let wrap = (val, op, msg) => new VerboseArithmetics(op(val), msg + op(val));
 
 let x = new VerboseArithmetics(5, 'Initial value: 5...');
 let w = x
-    .bind(val => makeVerbose(val, pow2, 'to the power of 2 -> '))
-    .bind(val => makeVerbose(val, mul3, 'multiplied by 3 -> '))
-    .bind(val => makeVerbose(val, add2, 'plus 2 -> '))
+    .bind(val => wrap(val, pow2, 'to the power of 2 -> '))
+    .bind(val => wrap(val, mul3, 'multiplied by 3 -> '))
+    .bind(val => wrap(val, add2, 'plus 2 -> '))
     .bind(val => console.log('result is:', val))
 {% endhighlight %}
 
-As you can see, since it is always the function that we are binding to the interim results that is creating the new monad instance, we can pass a unique string in each case, making the use of *VerboseArithmetics* as a monad type more flexible (than as a functor type). At the same time, the fact that we are calling *makeVerbose()* each time -- which in turn creates a new *VerboseArithmetics* object, it should be clear based on the type alone what kinds of side effects will occur. If we renamed *makeVerbose()* to something more generic, like *wrap()*, we would just have to change the implementation of the *wrap()* function (to instantiate a type other than *VerboseArithmetics*) to get a different kind of side effect, or no side effect at all, each step along the way. Based on this example, the benefits compared to having to search for *console.log()* calls throughout the code base, or even compared to changing the functions passed to each call to *bind()* should be obvious.
+As you can see, since it is always the function that we are binding to the interim results that is creating the new monad instance, we can pass a unique string in each case, making the use of *VerboseArithmetics* as a monad type more flexible (than as a functor type). At the same time, the fact that we are calling *wrap()* each time -- which in turn creates a new *VerboseArithmetics* object, it should be clear based on the type alone what kinds of side effects will occur. Since the implementation of the *wrap()* function is the only place in the code that references the *VerboseArithmetics* type, we would just have to change the implementation of *wrap()* function if we wanted to instantiate a type other than *VerboseArithmetics* to get a different kind of side effect, or no side effect at all, each step along the way. Based on this example, the benefits compared to having to search for *console.log()* calls throughout the code base, or even compared to changing the functions passed to each call to *bind()* should be obvious.
 
-Finally, yet another way to think about monads is that they can encapsulate some state that can be operated on cleanly and elegantly by the function passed to *bind()*. A classic example is the trampoline, which allows one to implement recursive functions in a generic without stack overflow issues. The key idea is that instead of executing the recursive call in each step immediately, the fact that the call needs to be made -- along with its parameters -- can be stored as part of the state of the monad, obviating the need for new data to be placed on the stack each step along the way. As a final example, let's consider how one could compute the Fibonacci function using a trampoline monad:
+Before I leave you with that thought, let's take a look at one final example of how monads can be used to encapsulate state changes in a generic way. A classic example is the trampoline, which allows one to implement recursive functions without having to deal with stack overflow issues. The key idea is that instead of executing the recursive call in each step immediately, the fact that the call needs to be made -- along with its parameters -- can be stored as part of the state of the monad, obviating the need for new data to be placed on the stack each step along the way. Here is one possible way to compute the Fibonacci function using a trampoline monad:
 
 {% highlight javascript %}
 class Trampoline {
@@ -187,6 +316,8 @@ let fib10 = new Trampoline(
     );
 });
 {% endhighlight %}
+
+As you can see, the Trampoline object itself is independent of the Fibonacci function or any specific operation, so we can use it to implement any recursive function in general: it's the function that we are binding to the Trampoline object that is doing all the heavy lifting. At the same time, the (near) infinite loop is carried out by the *bind()* function, so seemingly there is no recursion inside the function we are binding. All of this results in a very clean structure and also for an effective implementation. Note that by adding memoization to the Trampoline class, it would be possible to make the computations even more efficient.
 
 # So, in the end, what exactly are monads?
 
