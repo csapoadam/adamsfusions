@@ -70,34 +70,7 @@ let w = new NumberContainer(5)
     .map(val => console.log('result is:', val))
 {% endhighlight %}
 
-That's because from the second call to *map()* onwards, each mapped function is expecting to receive as its input a numeric value... not a *NumberContainer* object created in the previous step. If we wanted to chain functions like these (for some reason), we would need to use a different kind of *map()*, which is often referred to as *bind()* or *flatmap()*:
-
-{% highlight javascript %}
-class NumberContainerWithBind {
-    constructor(val) {
-        this.value = val;
-    }
-    
-    map(fn) {
-        return new NumberContainerWithBind(fn(this.value));
-    }
-
-    bind(fn) {
-        return fn(this.value);
-    }
-}
-
-const pow2wrapped = val => new NumberContainerWithBind(Math.pow(val, 2));
-const mul3wrapped = val => new NumberContainerWithBind(val * 3);
-const add2wrapped = val => new NumberContainerWithBind(val + 2);
-
-let x = new NumberContainerWithBind(5)
-    .bind(pow2wrapped)
-    .bind(mul3wrapped)
-    .bind(add2wrapped)
-    .bind(val => console.log('result from NumberContainerWithBind is:', val))
-
-{% endhighlight %}
+That's because from the second call to *map()* onwards, each mapped function is expecting to receive as its input a numeric value... not a *NumberContainer* object created in the previous step. If we wanted to chain functions like these (for some reason), we would need to use a different kind of *map()*, which is often referred to as *bind()* or *flatmap()*.
 
 But why would we want to do this in the first place?
 
