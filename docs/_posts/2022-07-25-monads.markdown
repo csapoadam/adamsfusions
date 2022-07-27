@@ -165,12 +165,12 @@ const printWallet = (wallet) => {
 
 const myWallet1 = new Wallet(new WalletState());
 const myWallet2 = myWallet1
-    .map(wstate => addAmount(new Denomination(5, 'usd'))(wstate))
-    .map(wstate => addAmount(new Denomination(15, 'usd'))(wstate))
-    .map(wstate => addAmount(new Denomination(12000, 'jpy'))(wstate))
-    .map(wstate => payAmount(new Denomination(3, 'usd'))(wstate))
-    .map(wstate => payAmount(new Denomination(50, 'eur'))(wstate))
-    .map(wstate => payAmount(new Denomination(3000, 'jpy'))(wstate));
+    .map(addAmount(new Denomination(5, 'usd')))
+    .map(addAmount(new Denomination(15, 'usd')))
+    .map(addAmount(new Denomination(12000, 'jpy')))
+    .map(payAmount(new Denomination(3, 'usd')))
+    .map(payAmount(new Denomination(50, 'eur')))
+    .map(payAmount(new Denomination(3000, 'jpy')));
 
 const makePremium = (wstate) => {
     return new Wallet(wstate, 'premium')
