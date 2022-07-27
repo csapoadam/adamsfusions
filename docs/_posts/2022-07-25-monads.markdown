@@ -178,7 +178,7 @@ const makePremium = (wstate) => {
 
 const myWallet3 = myWallet2
     .bind(makePremium)
-    .map(wstate => addAmount(new Denomination(500, 'eur'))(wstate));
+    .map(addAmount(new Denomination(500, 'eur')));
 
 printWallet(myWallet1); // should still be empty!
 printWallet(myWallet2); // should still be a basic account with 17 usd and 9000 jpy
