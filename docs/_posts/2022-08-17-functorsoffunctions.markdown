@@ -5,11 +5,13 @@ date: 2022-08-17 12:20:23 +0900
 category: SoftwareDesign
 ---
 
-There - I knew that title would surprise you! But just like monads from my previous post, you will soon see that functional function modeling is fun, especially using contravariant functors of functions that are also monads.
+There - I knew that title would surprise you! But just like monads from my previous post, you will soon see that functional dependency injection is fun, especially using contravariant functors of functions that are also monads.
+
+When writing this post, unlike the previous one, I have to acknowledge that I was standing (standing? more like kneeling...) on the shoulders of giants. Much credit goes to Brian Lonsdorf, as I've highlighted in multiple instances.
 
 # Quick recap - What is a functor?
 
-From my previous post, we know that a functor *F\<A\>* is basically a wrapper for a type A that offers the convenience of being able to chain operations using the *map()* operation. The following *NumberContainer* class provides a basic example:
+From my previous post, we know that a functor *F\<A\>* is basically a wrapper for a type A that offers the convenience of chaining operations using the *map()* operation. The following *NumberContainer* class provides a basic example:
 
 {% highlight javascript %}
 class NumberContainer {
@@ -35,7 +37,7 @@ let w = new NumberContainer(5)
 
 The obvious benefit here is that the operations *pow*, *mul3*, etc. can be chained together in a highly readable way, by abstracting away the mechanics of storing interim results and passing them on to the next function call.
 
-Note also that in the above example, we were mapping functions that returned the same type as the type of their argument. Functors that map functions of this kind are referred to as **endofunctors** ('endo', of course, referring to the fact that the resulting value is of the same type as the original value). Whenever we have an endofunctor, it can also naturally support a so-called *concat()* operation, which allows one to combine different chains of operations at any point. For example, if instead of computing *3(5)^2 + 2*, we wanted to compute *3((5)^2 + 2)*, we could modify the previous example as follows:
+Note also that in the above example, we were mapping functions that returned the same type as the type of their argument. Functors that map functions of this kind are referred to as **endofunctors** ('endo', of course, referring to the fact that the resulting value is of the same type as the original value). Whenever we have an endofunctor, it can also naturally support a so-called *concat()* operation, which allows one to combine different chains of operations at any point. For example, if instead of computing *3(5)<sup>2</sup> + 2*, we wanted to compute *3((5)<sup>2</sup> + 2)*, we could modify the previous example as follows:
 
 {% highlight javascript %}
 class NumberContainer {
@@ -70,27 +72,24 @@ We could do this because we were certain that at any point during the chain of c
 
 # Now let's consider functors containing functions
 
-Interesting new possibilities arise if we relax our brains a bit further and consider functors that contain objects that belong not to a value type, but to a class of functions with a single input and a single output (we could generalize to a broader class of functions later if we wanted). What would be the implications of doing this?
+Interesting new possibilities arise if we relax our capacity for wild mental associations a bit further and consider functors that contain objects belonging not to a value type, but to a class of functions with a single input and a single output (we could generalize to a broader class of functions later if we wanted). What would be the implications of doing this?
 
 #### What'll happen to map()?
 
-First, let's consider what would happen to *map()*. Note that in general, a function that transforms from type A to type B can be written as *g: A -> B*, or, to use prefix notation, as *g: (-> A B)*.
+First, let's consider what would happen to *map()*. Note that in general, a function that transforms from type A to type B can be written as *g: A -> B*.
 
 A "plain" functor *F* of type *A* could in general map functions of form *A -> X*, and the result would be a new functor of type *F\<X\>*. In this case, *map()* would have the form:
 
 *map<sub>F\<A\></sub>: (A -> X) -> F\<B\>* 
 
-Returning to functors of functions, we can in fact obtain the same form by transforming our original function *g: (-> A B)*, to create a new function *g<sub>A</sub>: () -> B*, which already encapsulates, deep within its internals, a value of type *A* and just has to hold a value of type *B* (which it will return when executed). Supposing we had a function *h: B -> X*, the *map()* function for the associated functor, *F<sub>gA</sub>\<B\>*, then, would simply look like this:
-
-*map<sub>F<sub>gA</sub>\<B\></sub>: (B -> X) -> F<sub>hgA</sub>\<X\>*
-
-Here, we have of course changed the input type of the mapped function to *B* because this is the type that the starting functor is holding. But the main point is that as we can see, by mapping a function that transforms between types *B* and *X* to such a functor holding a value of type *B*, we can obtain a new similar functor that holds a type *X* (and encapsulates a function that transforms from type *A* to type *X*). Such behavior can be naturally obtained by first calling the function stored inside F<sub>gA</sub>\<B\>, then calling the mapped function *g: (B -> X)* on the result, and wrapping the output into a new functor of type F<sub>gA</sub>. This is basically function composition!
-
-And now that we have ascertained that this is the case, we can return to our original notation with a slight modification, and write the following:
+Returning to functors of functions, we can obtain a similar form as follows:
 
 *map<sub>F<sub>A -> B</sub></sub>: (B -> X) -> F<sub>A -> X</sub>*
 
-To summarize, when we want to map a function onto a function stored inside a functor, we first execute the stored function, then call the mapped function on the result, and finally wrap up the result into the same type of functor.
+When asking ourselves what function the resulting functor could represent, an obvious answer is that it could represent a function that arises as a composition of the originally stored function and the function we are mapping. By running the original function on an input of type *A*, we receive a value of type *B*, which can then be "fed into" the second function, to receive a value of type *X*.
+
+Of course, all of this is a potentiality, as the actual functions won't be executed until they are explicitly run. As we will see, this kind of lazy evaluation is a big advantage of functors holding functions: real execution with side effects can be deferred even as the chain of computations is being assembled.
+
 
 #### Introducing contramap()
 
@@ -100,41 +99,11 @@ One natural variation, of course, would to do this the other way around. Who's t
 
 *contramap<sub>F<sub>A -> B</sub></sub>: (X -> A) -> F<sub>X -> B</sub>*
 
-Functors that have a contramap operation are known as **contravariant functors**. Having a contramap operation is useful if we want to use a functor containing a function, like *F<sub>gA</sub>\<B\>*, but the input value that we have belongs to type *X*, and not type *A*. Let's consider a short example.
+Functors that have a contramap operation are known as **contravariant functors**. Having a contramap operation is useful if we want to use a functor containing a function, like *F<sub>A -> B</sub>*, but the input value that we have belongs to type *X*, and not type *A*. Let's consider a short example.
 
 #### An example with both map() and contramap()
 
-In the following example, we have a type *FnWrapper* that wraps a function with one argument, and exposes ways both to transform the output (using *map()*) and to transform the input of that function (using *contramap()*):
-
-{% highlight javascript %}
-class FnWrapper {
-  constructor(fn) {
-    this.fn = fn
-  }
-
-  map(f) {
-    return new FnWrapper(x => f(this.fn(x)))
-  }
-
-  contramap(f) {
-    return new FnWrapper(x => this.fn(f(x)))
-  }
-
-  run(x) {
-    return this.fn(x)
-  }
-}
-
-const plus2 = x => x + 2;
-const times3 = x => 3 * x;
-
-const xPlus2Times3 = new FnWrapper(plus2)
-  .map(times3)
-
-console.log(`xPlus2Times3 applied to '5' = ${xPlus2Times3.contramap(x => Number(x)).run('5')}`) // 21 indeed...
-{% endhighlight %}
-
-A more succinct way of writing this example would be to use an object-based approach as advocated in Brian Lonsdorf's tutorials:
+In the following example, we have a type *FnWrapper* that wraps a function with one argument, and exposes ways both to transform the output - using *map()* - and to transform the input of that function - using *contramap()*. (Note that in this example, instead of using a class to define *FnWrapper*, I used the function-to-object style advocated in the tutorials done by Brian Lonsdorf.)
 
 {% highlight javascript %}
 const FnWrapper = fn => ({
@@ -156,17 +125,17 @@ How nice...
 
 # Introducing contravariant functors (holding functions) that are also monads
 
-Now let's move on to the icing on the cake. An exciting tool for solving the problem dependency injection.
+Now let's move on to the icing on the cake: an exciting tool for solving the problem dependency injection.
 
-As a programmer, we are often confronted with the task of parameterizing the behavior of a system based on so-called environment variables. For example, in a test scenario, we might want to connect to a different database than the one used in production. We might also want to generate log messages that are more verbose than otherwise. This requirement forces us to pass around an environment object in the whole application, even if many parts of the application may have no use for it!
+As developers creating large-scale applications, we are often confronted with the task of parameterizing the behavior of a system based on so-called environment variables. For example, in a test scenario, we might want to connect to a different database than the one used in production. We might also want to generate log messages that are more verbose than otherwise. This requirement forces us to pass around an environment object in the whole application, even if many parts of the application may have no use for it!
 
 Especially when we want to structure our application in a way that relies on functions composed together with functions of functions of functions, it would be akin to a nightmare if we had to change the signature of all functions and return values so that the composition would work.
 
-Let's see if we can't solve this problem by adding a bit of secret sauce to our earlier contravariant functor (or once I share it with you, not so secret sauce...)
+Let's see if we can't solve this problem by adding a bit of secret sauce to our earlier contravariant functor.
 
 #### Monadic contravariant functors
 
-Recall that a monad is just a functor that also exposes a *flatmap()* function. Compared to *map()*, *flatmap()* will accept a function that maps not from the stored value type to a resulting stored value type, but from the stored value type to a new monad of the resulting stored value type.
+Recall that a monad is just a functional datatype that exposes a *flatmap()* function. Compared to *map()*, *flatmap()* will accept a function that maps not from the stored value type to a resulting stored value type, but from the stored value type to a new monad of the resulting stored value type.
 
 So, for example, if we have a functor *F\<A\>*, we could map a function *g: A -> B* onto it and obtain a functor *F\<B\>*. However, if we had a monad of type *M\<A\>*, we could flatmap a function *g: A -> M\<B\>* onto it to obtain a monad *M\<B\>*. The key difference is whether it is the flatmapped function that creates the new monad, or if it is the functor itself, onto which we are mapping our function, that has to wrap the result.
 
@@ -180,7 +149,7 @@ Now, *flatmap()* is a slight variation on the above:
 
 *flatmap<sub>M<sub>A -> B</sub></sub>: (B -> M<sub>A -> X</sub>) -> M<sub>A -> X</sub>*
 
-To map our new function, *h: B -> M<sub>A -> X</sub>*, we would first have to run the function inside *M<sub>A -> B</sub>*, thus obtaining an intermediate result of type *B*. Then, we would run the flatmapped function to obtain a monad of type *M<sub>M<sub>A -> X</sub></sub>*. We would then have to flatten out the result, i.e., create a new monad encapsulating just the function of type *A -> X*.
+Adapting our earlier thought processes to this new case, let's consider what kind of function the resulting monad might encapsulate. Once again, a viable solution clearly emerges: if one were to compose the originally stored function (mapping from *A* to *B*) with the mapped function (mapping from *B* to *M<sub>A -> X</sub>*), and then wrap the resulting function into a new monad object M (to store the composed function for later execution), one would obtain a result of type *M<sub>A -> M<sub>A -> X</sub></sub>*. To obtain the desired result, then, one would have to actually run the composed function inside this new monad, to obtain the result of type *M<sub>A -> X</sub>*.
 
 #### Monadic adaptation of our previous FnWrapper example
 
@@ -200,13 +169,28 @@ const plus2 = x => x + 2;
 const times3 = x => 3 * x;
 const times2 = x => x * 2;
 
-const xPlus2Times3PostProcessed = FnWrapper(() => 5)
-  .map(plus2)
+const p2t3postprocessed = FnWrapper(plus2)
   .map(times3)
-  .flatmap(res => FnWrapper(pproc => pproc(res)))
+  .contramap(env => env.input)
+  .flatmap(res => FnWrapper(
+      env => env.pproc(res)
+    )
+  )
 
-console.log(`xPlus2Times3 applied to 5 then doubled = ${xPlus2Times3PostProcessed.run(times2)}`) // 42 indeed...
+console.log(`xPlus2Times3 applied to 5 then doubled = ${p2t3postprocessed.run({
+  pproc: times2,
+  input: 5
+})}`) // 42 indeed...
 
-console.log(`xPlus2Times3 applied to 5 then plus 2 = ${xPlus2Times3PostProcessed.run(plus2)}`) // 23 indeed...
+console.log(`xPlus2Times3 applied to 5 then plustwo'd = ${p2t3postprocessed.run({
+  pproc: plus2,
+  input: 5
+})}`) // 23 indeed...
 
 {% endhighlight %}
+
+Here, we can see that *flatmap()* is implemented exactly as described: a new Monad is created, that contains the executed composition of the original and the flatmapped function.
+
+Further, what makes this example especially interesting is that the environment variables are provided only at the very end, once all the necessary functions have been composed using *map()*. We also needed to add a call to *contramap* in order to suss out the input to the numerical calculations from the environment object.
+
+I recommend that you take off a day from work to contemplate the wonders of this pattern. I'm very thankful for Brian Lonsdorf and others in the FP community for awakening me to its beauty.
