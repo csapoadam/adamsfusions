@@ -31,7 +31,7 @@ const Pure = x => ({
   type: () => 'free.pure',
   map: f => Pure(f(x)),
   flatMap: g => g(x),
-  toString: () => `Pure(${x})`,
+  toString: () => `Pure(${JSON.stringify(x)})`,
   run: () => x
 })
 
@@ -39,10 +39,11 @@ const Suspend = (x, f) => ({
   type: () => 'free.suspend',
   map: g => Suspend(x, input => f(input).map(result => g(result))),
   flatMap: g => Suspend(x, input => f(input).flatMap(g)),
-  toString: () => `Suspend(${JSON.stringify(x)}, f), where f(${x}) = ${f(x)}`,
+  toString: () => `Suspend(${JSON.stringify(x)}, f), where f(${JSON.stringify(x)}) = ${f(x)}`,
   run: () => f(x),
   getX: () => x
 })
+
 {% endhighlight %}
 
 First, let's consider *Pure*. Since in native Javascript at least, we don't have the option of creating algebraic data types, we can implement a *type()* function to be able to query the variant we are working with. The canonical functions, *map()* and *flatmap()* operate exactly as one would expect. In the case of *flatmap()*, the flatmapped function g will take care of wrapping the result into a new free monad, so we don't need to do this explictly as in the case of *map()*. *toString()* will be useful for printing the Pure object to the console, and *run()* will be necessary if we want to get back the value *x* that is stored inside the Pure object.
@@ -84,8 +85,8 @@ To map the Maybe monad onto the Free monad, so to speak, we first need to *lift*
 
 {% highlight javascript %}
 // Simulating other monads with Pure and Suspend...
-const just = x => ({x, type: () => 'maybe.just'})
-const nothing = () => ({type: () => 'maybe.nothing'})
+const just = x => ({x, type: () => 'maybe.just', toString: () => `just(${x})`})
+const nothing = () => ({type: () => 'maybe.nothing', toString: () => `nothing()`})
 
 const liftF = operationObject => Suspend(operationObject, Pure)
 
@@ -97,34 +98,71 @@ const Just = x => liftF(just(x))
 const Nothing = () => liftF(nothing())
 {% endhighlight %}
 
-In our application code, we will (mostly) use the capitalized versions *Just* and *Nothing*. These are both functions that either take a value (*x* in the case of *Just*) or nothing (in the case of *Nothing*) and *lift them into the context of a Suspend object*. This Suspend object promises to wrap the data that represents a *just* or *nothing* object into a *Pure* object at some later time (when the Suspend is fully finalized and run). The data itself that represents the *just* or *nothing* objects either has the form *{x, type: () => 'maybe.just'}* or *{type: () => 'maybe.nothing'}*.
+In our application code, we will (mostly) use the capitalized versions *Just* and *Nothing*. These are both functions that either take a value (*x* in the case of *Just*) or nothing (in the case of *Nothing*) and *lift them into the context of a Suspend object*. This Suspend object promises to wrap the data that represents a lowercase *just* or *nothing* object into a *Pure* object at some later time (when the Suspend is fully finalized and run). The data itself that represents the *just* or *nothing* objects either has the form *{x, type: () => 'maybe.just'}* or *{type: () => 'maybe.nothing'}*.
 
-Since a *Just(x)* or a *Nothing()* is now really just a *Suspend* object under the hood, in theory we can now map or flatmap other functions onto them. As expected, any function that we flatmap onto them will have to return either a *Just(x)* or a *Nothing()*. Any function that we flatmap onto them, in turn, will as a general rule have to return a lowercase *just(x)* or a lowercase *nothing()*. That's because, under the hood, the Suspend objects we are operating with actually operate on data of this form (either *{x, type: () => 'maybe.just'}* or *{type: () => 'maybe.nothing'})*.
+Since a *Just(x)* or a *Nothing()* is now really just a *Suspend* object under the hood, in theory we can now map or flatmap other functions onto them. As expected, any function that we flatmap onto them will have to return either a *Just(x)* or a *Nothing()*. Any function that we map onto them, in turn, will as a general rule have to return a lowercase *just(x)* or a lowercase *nothing()*. That's because, under the hood, the Suspend objects we are operating with actually operate on data of this form (either *{x, type: () => 'maybe.just'}* or *{type: () => 'maybe.nothing'})*.
 
-The big question is, how can we actually run a chain of computations built up in this way? To do this, we need an *interpreter* function, which we will call *runMaybe()* that
+The big question is, how can we actually run a chain of computations built up in this way? You might think that you could always just call *run()* on it, as usual. But apart from the most basic cases, this will not work! Consider the following example:
 
 {% highlight javascript %}
-const runMaybe = justOrNothing => {
-  if (justOrNothing.type() === 'free.pure') {
-    return justOrNothing.run()
-  } else if (justOrNothing.type() === 'free.suspend') {
-    if (justOrNothing.getX().type() === 'maybe.nothing') {
-      return Nothing()
+const maybe1 = Just(4)
+console.log(`maybe1 is ${maybe1}. Result of run(): ${maybe1.run()}`)
+// maybe1 is: Suspend({"x":4}, f), where f({"x":4}) = Pure({"x":4})
+// result is: Pure({"x":4})
+
+const maybe2 = Just(4).flatMap(res => Just(res + 1))
+console.log(`maybe2 is ${maybe2}. Result of run(): ${maybe2.run()}`)
+// maybe2 is: Suspend({"x":4}, f), where
+//   f({"x":4}) = Suspend({"x":"just(4)1"}, f), where
+//     f({"x":"just(4)1"}) = Pure({"x":"just(4)1"})
+// result is: Suspend({"x":"just(4)1"}, f), where f({"x":"just(4)1"}) = Pure({"x":"just(4)1"})
+{% endhighlight %}
+
+In the first case, we really just have a *Suspend* object on our hands that, once run, will return the stored data wrapped inside a *Pure*. But something seems amiss in the second case. As you can see, *maybe2* is a kind of recursive data structure: a *Suspend*, that, when run, returns another *Suspend*, which, when run again, will return the *Pure*. But the content wrapped in the *Pure* object is also garbled, since 1 was appended as a string to *'just(4)'* rather than being added as a number to the 4 inside the *just* wrapper. These are two different problems. Let's take a closer look at what's happening here:
+
+* At first, *Just(4)* is a *Suspend* object that contains a *just(4)* object inside it, and when run, would return a *Pure(just(4))*
+* Flatmapping our second function, *g* (defined as: res => Just(res + 1)) onto this *Suspend* object is a call to this function: *g => Suspend(x, input => f(input).flatMap(g))*. So, will we get a new Suspend object, which still contains a *just(4)* object inside it, but which will eventually (when run) perform the computation *Pure(just(4)).flatMap(g)*. What is this function, actually? Flatmapping a function, *g*, on a *Pure(x)* will by definition just return *g(x)*. So, we will get another *Just* object back (precisely, a *Just(just(4) + 1)*), which is our second *Suspend* object, now containing a *just(4)1* string as its data, and promising to eventually put it into a *Pure* wrapper.
+
+Clearly, one would have to check whether the input to the flatmapped function, *g*, is a *just(x)* or a *nothing()* and unwrap that object, like this: *res => Just(res.x + 1)*. This would take care of the issue with the 1 being appended as a string rather than added to the internal 4 as a number.
+
+But the more important point is this: Composing functions is different from actually running the composed result. Actually running it might return a new structure that still needs to be run! Since the flatmapped function returned a new *Just()* object, which is a *Suspend*, it still needs to be run. And if we had subsequently called *flatMap()* more than once, we would have to call *run()* just as many times.
+
+So we have two problems with running a Suspend object composed in this way. First, we don't know how many times to run it. Second, the internal data that it contains still may need to be processed in unique ways. In our case, we still need to check whether the result from the earlier computation is a *nothing()* or a *just(x)* with a value! In the former case, we would have to return a *Nothing()*, not a *Just(x)*. And in the latter case, we would still need to unpack the value inside it.
+
+Instead of doing this in the implementation of every flatmapped function, we can use a so-called *interpreter* function, which we will call *runMaybe()* in this instance and implement it as follows:
+
+{% highlight javascript %}
+const runMaybe = capitalJorN => {
+  let current = capitalJorN
+  while(true) {
+    if (current.type() === 'free.pure') {
+      return current.run() // for Pure, this just returns x
     }
-    return runMaybe(justOrNothing.run())
+    // if it is a Suspend, it has getX()
+    if (current.getX().type() === 'maybe.nothing') {
+      return current.getX() // Nothing().run() // we cannot do anything further on a nothing
+    }
+    // we know we have a Suspend that we can run to either get a Pure or a Suspend
+    current = current.run()
   }
 }
+{% endhighlight %}
 
+The good news is, that eventually our loop of constantly getting a new *Just()* (or *Nothing()*) back will terminate, and the final *Suspend*, when run, will return a *Pure* object. So we can keep calling *runMaybe()* recursively (or in this case, terminate the infinite loop). 
+
+Now let's take a look at some examples:
+
+{% highlight javascript %}
 const maybeExample1 = Just(4)
   .map(value => just(value.x + 1))
   .flatMap(input => Just(2*input.x))
-console.log(`result of maybeExample1 is: ${JSON.stringify(runMaybe(maybeExample1))}\n`)
+console.log(`result of maybeExample1 is: ${runMaybe(maybeExample1)}\n`) // just(10)
 
 const maybeExample2 = Just(4)
   .flatMap(input => Just(2*input.x))
   .flatMap(input => Nothing())
   .flatMap(input => Just(input + 1))
-console.log(`result of maybeExample2 is: ${JSON.stringify(runMaybe(maybeExample2))}\n`)
+console.log(`result of maybeExample2 is: ${runMaybe(maybeExample2)}\n`) // nothing()
 {% endhighlight %}
 
 ...
