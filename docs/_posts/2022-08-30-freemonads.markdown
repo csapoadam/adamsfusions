@@ -1,6 +1,6 @@
 ---
 layout: post
-title: The Free Monad - A Versatile Tool for Mocking Side-Effects and Dynamically Reinterpreting Abstract Code - WIP
+title: The Free Monad - A Versatile Tool for Mocking and Testing Side-Effects - WIP
 date: 2022-08-30 12:20:23 +0900
 category: SoftwareDesign
 ---
@@ -24,7 +24,7 @@ The **Suspend** (also known as **Impure**) variant of a free monad encapsulates 
 
 Based on this short description, we can already see that free monads hold the potential to represent more than one kind of data processing pattern. As suggested by the trampoline example, we can implement stack-safe recursive behaviors by having a function that keeps returning a *Suspend* object, as long as further recursion is necessary; and a *Pure* object, once the recursion terminates. If the value part of a *Suspend* object represents a reified operation (as opposed to some literal data in the classical sense), we can reinterpret the semantics of that operation at a later time. In this way, we can create domain-specific languages (DSLs) with multiple alternative interpreters - an approach that can be useful for mocking / testing some behavior without actually running it to get unwanted side effects.
 
-Before going into the examples, let's take a look at a possible implementation of free monads in Javascript:
+Before going into specific examples, let's take a look at a possible implementation of free monads in Javascript:
 
 {% highlight javascript %}
 const Pure = x => ({
@@ -37,7 +37,7 @@ const Pure = x => ({
 
 const Suspend = (x, f) => ({
   type: () => 'free.suspend',
-  map: g => Suspend(x, input => f(input).map(result => g(result))),
+  map: g => Suspend(x, input => f(input).map(g)),
   flatMap: g => Suspend(x, input => f(input).flatMap(g)),
   toString: () => `Suspend(${JSON.stringify(x)}, f), where f(${JSON.stringify(x)}) = ${f(x)}`,
   run: () => f(x),
@@ -121,15 +121,17 @@ console.log(`maybe2 is ${maybe2}. Result of run(): ${maybe2.run()}`)
 In the first case, we really just have a *Suspend* object on our hands that, once run, will return the stored data wrapped inside a *Pure*. But something seems amiss in the second case. As you can see, *maybe2* is a kind of recursive data structure: a *Suspend*, that, when run, returns another *Suspend*, which, when run again, will return the *Pure*. But the content wrapped in the *Pure* object is also garbled, since 1 was appended as a string to *'just(4)'* rather than being added as a number to the 4 inside the *just* wrapper. These are two different problems. Let's take a closer look at what's happening here:
 
 * At first, *Just(4)* is a *Suspend* object that contains a *just(4)* object inside it, and when run, would return a *Pure(just(4))*
-* Flatmapping our second function, *g* (defined as: res => Just(res + 1)) onto this *Suspend* object is a call to this function: *g => Suspend(x, input => f(input).flatMap(g))*. So, will we get a new Suspend object, which still contains a *just(4)* object inside it, but which will eventually (when run) perform the computation *Pure(just(4)).flatMap(g)*. What is this function, actually? Flatmapping a function, *g*, on a *Pure(x)* will by definition just return *g(x)*. So, we will get another *Just* object back (precisely, a *Just(just(4) + 1)*), which is our second *Suspend* object, now containing a *just(4)1* string as its data, and promising to eventually put it into a *Pure* wrapper.
+* Flatmapping our second function, *g* (defined as: res => Just(res + 1)) onto this *Suspend* object is really a call (as per the implementation of *flatmap()*) to this function: *g => Suspend(x, input => f(input).flatMap(g))*. So, will we thus transform the original Suspend object into a new Suspend object, which will still contain a *just(4)* as its datum *x*, but which would eventually (when run) perform the computation *Pure(just(4)).flatMap(g)*. What is this function, actually? Flatmapping a function, *g*, on a *Pure(x)* will by definition just return *g(x)*. So, if we decided to actually run our transformed Suspend object obtained via *flatmap()*, we would get another *Just* object back (precisely, a *Just(just(4) + 1)*), which is our second *Suspend* object, now containing a *just(4)1* string as its data, and promising to eventually put it into a *Pure* wrapper.
 
-Clearly, one would have to check whether the input to the flatmapped function, *g*, is a *just(x)* or a *nothing()* and unwrap that object, like this: *res => Just(res.x + 1)*. This would take care of the issue with the 1 being appended as a string rather than added to the internal 4 as a number.
+What can we glean from this analysis?
 
-But the more important point is this: Composing functions is different from actually running the composed result. Actually running it might return a new structure that still needs to be run! Since the flatmapped function returned a new *Just()* object, which is a *Suspend*, it still needs to be run. And if we had subsequently called *flatMap()* more than once, we would have to call *run()* just as many times.
+* First, clearly, one would have to check whether the input to the flatmapped function, *g*, is a *just(x)* or a *nothing()* and unwrap that object, like this: *res => Just(res.x + 1)* instead of *res => Just(res + 1)*. This would take care of the issue with the 1 being appended as a string rather than added to the internal 4 as a number.
+
+* But the more important point is this: When composing Suspend objects using either *map()* or *flatmap()*, we are basically just transforming the original one to represent more elaborate computations on the inside. But what those computations actually do is a different question, which we will find out when we actually run them. If at any point, such a computation returns as an intermediate result a Suspend object, this will halt the computations until this new Suspend is actually run. In fact, all of the subsequent computations in the original chain of computations will just have the effect of transforming that Suspend object, to encapsulate all of the remaining computations which we wanted to carry out but didn't! How beautiful!
 
 So we have two problems with running a Suspend object composed in this way. First, we don't know how many times to run it. Second, the internal data that it contains still may need to be processed in unique ways. In our case, we still need to check whether the result from the earlier computation is a *nothing()* or a *just(x)* with a value! In the former case, we would have to return a *Nothing()*, not a *Just(x)*. And in the latter case, we would still need to unpack the value inside it.
 
-Instead of doing this in the implementation of every flatmapped function, we can use a so-called *interpreter* function, which we will call *runMaybe()* in this instance and implement it as follows:
+Instead of doing this in the implementation of every flatmapped function, we can use what I like to call a *runner* function, which we will call *runMaybe()* in this instance and implement it as follows:
 
 {% highlight javascript %}
 const runMaybe = capitalJorN => {
@@ -140,7 +142,7 @@ const runMaybe = capitalJorN => {
     }
     // if it is a Suspend, it has getX()
     if (current.getX().type() === 'maybe.nothing') {
-      return current.getX() // Nothing().run() // we cannot do anything further on a nothing
+      return current.getX() // we cannot do anything further on a nothing
     }
     // we know we have a Suspend that we can run to either get a Pure or a Suspend
     current = current.run()
@@ -165,4 +167,145 @@ const maybeExample2 = Just(4)
 console.log(`result of maybeExample2 is: ${runMaybe(maybeExample2)}\n`) // nothing()
 {% endhighlight %}
 
-...
+
+## Re-interpreting abstract syntax trees using the free monad
+
+As we've seen in the previous example, in principle it's possible to implement any kind of monad using the free monad, by reifying the monad as a set of data structures and piggybacking the data structures on the data field of a Suspend object. By now we understand that when doing this, a special runner function is also needed to make sure that the reified data structures are properly processed when the operations (i.e., mapping and flatmapping of functions) within the Suspend object are carried out on them. By necessity this runner function will be unique to the piggybacked monad since the number of parameters and their semantics in the reified monad will vary.
+
+As a variation on this pattern, prior to actually running the operations in the Suspend object(s), we could also transform the data contained in them into something else. This is useful when this data represents operations that can be carried out as opposed to just data (as in the Just(x) and Nothing() case), assuming that we want to interpret the semantics of those operations on the fly.
+
+Let's consider a simple algebraic example with two different interpretations: one literal, and one that simply prints the operations as a string.
+
+To do this, we first define the (lowercase) reified operations and their uppercase versions that are lifted into the realm of the free monad:
+
+{% highlight javascript %}
+const div = (x, y) => ({x, y, type: 'div', toString: () => `div(${x}, ${y})`}) // a function that returns a data structure representing division
+const add = (x, y) => ({x, y, type: 'add', toString: () => `add(${x}, ${y})`}) // a function that returns a data structure representing addition
+const mul = (x, y) => ({x, y, type: 'mul', toString: () => `mul(${x}, ${y})`}) // a function that returns a data structure representing multiplication
+
+const Div = (x, y) => liftF(div(x, y)) //a function that if run, returns a Suspend(div(x,y), f) such that f() returns Pure(div(x,y))
+const Add = (x, y) => liftF(add(x, y)) //a function that if run, returns a Suspend(add(x,y), f) such that f() returns Pure(add(x,y))
+const Mul = (x, y) => liftF(mul(x, y)) //a function that if run, returns a Suspend(mul(x,y), f) such that f() returns Pure(mul(x,y))
+{% endhighlight %}
+
+Here, again, *Div(x, y)*, *Add(x, y)* and *Mul(x, y)* are actually just *Suspend* objects under the hood that contain the objects representing the lowercase variants *div*, *add* and *mul*, with the deferred operation of wrapping those into a *Pure*. However, what is different compared to the example with the Maybe monad is that *div*, *add* and *mul* now represent operations that can be carried out.
+
+Next, we define our two *interpreter* functions, whose task it is to transform the data contained within each intermediate *Suspend* object prior to their being run. Since we don't know what type our interpreter function will (in general) return, it's important that we wrap the return values into an *Id()* wrapper. This will allow us to inject the result into the existing chain of operations within the *Suspend* object using *flatmap()*:
+
+{% highlight javascript %}
+const interpretAsValue = x => {
+  if (x.type == 'div') {
+    return Id(x.x / x.y)
+  }
+  if (x.type == 'mul') {
+    return Id(x.x * x.y)
+  }
+  if (x.type == 'add') {
+    return Id(x.x + x.y)
+  }
+}
+
+const interpretAsString = x => {
+  if (x.type == 'div') {
+    return Id(`(${x.x} / ${x.y})`)
+  }
+  if (x.type == 'mul') {
+    return Id(`(${x.x} * ${x.y})`)
+  }
+  if (x.type == 'add') {
+    return Id(`(${x.x} + ${x.y})`)
+  }
+}
+{% endhighlight %}
+
+Our application code, in turn, will look something like this:
+
+{% highlight javascript %}
+const computationX = Add(5,1) //Suspend(add(5,1), f), such that f(add(5,1)) = Pure(add(5,1))
+  .flatMap(x => Mul(x, 2))
+  .flatMap(x => Div(x, 6))
+
+console.log(`computationX: ${computationX}`)
+//  Suspend(add(5, 1), f), where
+//    f(add(5, 1)) = Suspend(mul(add(5, 1), 2), f), where
+//      f(mul(add(5, 1), 2)) = Suspend(div(mul(add(5, 1), 2), 6), f), where
+//        f(div(mul(add(5, 1), 2), 6)) = Pure(div(mul(add(5, 1), 2), 6))
+
+console.log(`string interpretation: ${computationX.foldMap(interpretAsString, Id).extract()}`)
+// string interpretation: (((5 + 1) * 2) / 6)
+console.log(`value: ${computationX.foldMap(interpretAsValue, Id).extract()}`)
+// value: 2
+{% endhighlight %}
+
+Here, we can see that we have the same kind of recursive Suspend chain that we had in the example with the Maybe monad. However, prior to running the function in each of the subsequent Suspend objects, we will want to first transform the data on which those functions are run.
+
+Once we grasp this concept, the implementation of *foldMap()* is not so difficult.
+
+To ensure that it has the same number and type of arguments in both the *Pure* and *Suspend* case, *foldMap()* will accept two arguments: first, the interpreter function itself, and second, the wrapper type that the interpreter function uses to wrap its result.
+
+In the case of *Pure*, all we have to do is wrap the contents of the *Pure* object into the wrapper type:
+
+
+{% highlight javascript %}
+const Pure = x => ({
+  type: () => 'free.pure',
+  map: f => Pure(f(x)),
+  flatMap: g => g(x),
+  toString: () => `Pure(${JSON.stringify(x)})`,
+  run: () => x,
+  foldMap: (interpreter, constructor) => constructor(x)
+})
+{% endhighlight %}
+
+In the case of *Suspend*, our task is a tiny bit less trivial. First, we want to use the interpreter to transform the datum inside the object. Next, we will call the function *f* on the result, to obtain our next *Suspend* or *Pure* object in the chain, and call foldMap() on that new free monad as well:
+
+{% highlight javascript %}
+const Suspend = (x, f) => ({
+  type: () => 'free.suspend',
+  map: g => Suspend(x, input => f(input).map(g)),
+  flatMap: g => Suspend(x, input => f(input).flatMap(g)),
+  toString: () => `Suspend(${JSON.stringify(x)}, f), where f(${JSON.stringify(x)}) = ${f(x)}`,
+  run: () => f(x),
+  getX: () => x,
+  foldMap: (interpreter, constructor) => interpreter(x).flatMap(result =>
+    f(result).foldMap(interpreter, constructor))
+{% endhighlight %}
+
+What will foldMap do? Itt will turn:
+
+{% highlight javascript %}
+//  Suspend(add(5, 1), f), where
+//    f(add(5, 1)) = Suspend(mul(add(5, 1), 2), f), where
+//      f(mul(add(5, 1), 2)) = Suspend(div(mul(add(5, 1), 2), 6), f), where
+//        f(div(mul(add(5, 1), 2), 6)) = Pure(div(mul(add(5, 1), 2), 6))
+
+// into:
+
+// f(result) = Suspend(mul((5 + 1), 2), f), where
+//   f(mul((5 + 1), 2)) = Suspend(div(mul((5 + 1), 2), 6), f), where
+//     f(div(mul((5 + 1), 2), 6)) = Pure(div(mul((5 + 1), 2), 6))
+
+// That's because foldMap called on the original Suspend object has this implementation:
+// interpreter(x).flatMap(result => f(result).foldMap(interpreter, constructor))
+
+// where, in the string case:
+
+// interpreter(add(5, 1)) = Id(5 + 1)
+// so, result is '5 + 1'
+// calling f on this is the same as above, except that we have a different argument, so we obtain:
+// Suspend(div(mul((5 + 1), 2), 6), f)
+
+
+// next, interpreter(x) will be '((5 + 1) * 2)', and foldMap will convert this result to:
+// f(result) = Suspend(div(((5 + 1) * 2), 6), f), where
+//    f(div(((5 + 1) * 2), 6)) = Pure(div(((5 + 1) * 2), 6))
+
+// next, interpreter(x) will be '(((5 + 1) * 2) / 6)', and foldMap will convert this result to:
+// f(result) = Pure((((5 + 1) * 2) / 6))
+
+// Finally, foldMap() for the Pure(...) will return Id((((5 + 1) * 2) / 6))
+{% endhighlight %}
+
+## An example of the free monad used for mocking / testing applications
+
+The arithmetics example in the previous section was decidedly edifying, but perhaps not very interesting from a practical perspective. So let's imagine we are working on a 2D graphical application and consider an example where we want to draw some shapes to form a 2D rocket, such that when the user clicks on the body of the rocket, the rocket will launch. 
