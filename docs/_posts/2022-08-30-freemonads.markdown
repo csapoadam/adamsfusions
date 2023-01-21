@@ -5,27 +5,28 @@ date: 2022-08-30 12:20:23 +0900
 category: SoftwareDesign
 ---
 
-As we know from the vast literature on software testing, there are many practical approaches for substituting as yet not fully functional software components with so-called **test doubles** -- including [stubs, fakes, and mocks](https://blog.pragmatists.com/test-doubles-fakes-mocks-and-stubs-1a7491dfa3da). In this post, we will take a look at a functional programming structure called the **Free Monad**, and consider how it offers an elegant method for creating test doubles.
+As we know from the vast literature on software testing, there are many practical approaches for substituting as yet not fully functional software components with so-called **test doubles** -- including [stubs, fakes, and mocks](https://blog.pragmatists.com/test-doubles-fakes-mocks-and-stubs-1a7491dfa3da). In this post, we will take a look at a functional programming structure called the **Free Monad**, and consider how it offers an elegant way to create test doubles.
 
+# A quick review of where we are
 
-In these two previous posts, we went through a number of functional programming concepts, namely functors, monads, contravariant functors and contravariant monads. We saw based on some rudimentary examples that these concepts could be used to write code that is more readable and more elegant in managing both dependencies and side effects. The basic mechanisms by which all of this could be achieved can be summarized as follows:
+Before we begin, recall that in these two previous posts, we went through a number of functional programming concepts, namely functors, monads, contravariant functors and contravariant monads. Based on some rudimentary examples, we saw how these concepts can be used to write code that is more readable and more elegant, both in managing dependencies and side effects. How did we achieve this? Basically, by using these concepts to:
 
-* Encapsulation of the glue between functions: the wrapping and unwrapping of data structures, and the passing on of data from one function to the next could be encapsulated under the hood by canonical functions such as *map()* and *flatmap()*;
-* Lazy (deferred) evaluation: this means that a function, or a composed chain of functions could be stored as data, wrapped in a container, allowing for both the input to and the output from the function(s) to be gradually transformed prior to running the code
+* Encapsulate the glue between functions: we encapsulated the wrapping and unwrapping of data structures, and the passing on of data from one function to the next using canonical functions such as *map()* and *flatmap()*; this, in turn, helped us remove a lot of boilerplate code having to do with creating and managing variables, and focus solely on the sequence of functions to be called.
+* Perform lazy (deferred) evaluation: we stored our functions, or composed chains thereof, as data wrapped in a container such as a (contravariant) functor or a monad. This allowed us to define a series of transformations on both the input to and the output from our function(s) prior to actually running our code. As we saw, this allowed us to achieve goals like input transformations and dependency injection without having to manage explicit state.
 
-Today, we will go one step forward and gently introduce a functional data structure called the **free monad**. The wonder of free monads is that they can be used to model any sequence of operations in such a way that *not only the execution, but also the interpretation of those operations can be deferred to a later time*. Free monads can be used to achieve this by encapsulating both an operation as data and a sequence of transformations on that operation in a canonical way.
+Today, we will go one step further and introduce a special type of monad called the **free monad**. The wonder of free monads is that they can be used to model any sequence of operations in such a way that *not only the execution, but also the interpretation of those operations can be deferred to a later time*. The main idea is to not only represent each function in our chain of operations as data, but also to wrap each intermediate result into a structure that halts the chain of computations until it is explicitly resumed. This, in turn, will allow all intermediate results to be interpreted as something other than the operations they represent at face value. In the treatment of this topic, I am once again indebted to Brian Lonsdorf, whose very elegant (but somewhat terse) explanations served as a starting point for this post.
 
-# The why and what of free monads
+# The what and the why of free monads
 
-Apparently, many branches of mathematics use the term 'free' to denote a concept that is in some sense the least restricted example in its class. We don't need to go into the details to understand free monads, but maybe this interpretation will help reinforce the idea that free monads are a very minimal, canonical and therefore highly versatile type of monad.
+Apparently, many branches of mathematics use the term 'free' to denote a concept that is in some sense the least restricted example in its class (or so they say). We don't need to go into the details to understand free monads, but maybe this interpretation will help reinforce the idea that free monads are a very minimal, canonical and therefore highly versatile type of monad.
 
 Briefly stated, a **free monad is a composite data type whose instances can either be of type** *Suspend* **, or of type** *Pure*.
 
 The **Suspend** (also known as **Impure**) variant of a free monad encapsulates some value, together with a deferred operation on that value.
 
-The **Pure** variant of a free monad, in turn, simply holds a value; usually, the starting point or final results of some computations.
+The **Pure** variant of a free monad, in turn, simply holds a value; usually, the starting point or final result of some series of transformations.
 
-Free monads hold the potential to represent more than one kind of data processing pattern. As suggested by the trampoline example, we can implement stack-safe recursive behaviors by having a function that keeps returning a *Suspend* object, as long as further recursion is necessary; and a *Pure* object, once the recursion terminates. If, on the other hand, the value part of a *Suspend* object represents a reified operation (as opposed to some literal data in the classical sense), we can reinterpret the semantics of that operation at a later time. In this way, we can create domain-specific languages (DSLs) with multiple alternative interpreters - an approach that can be useful for mocking / testing some behavior without actually running it to get unwanted side effects.
+Being free as they are, free monads hold the potential to represent more than one kind of data processing pattern. As suggested by the trampoline example, we can implement stack-safe recursive behaviors by creating a function that keeps returning a *Suspend* object, as long as further recursion is necessary; and a *Pure* object, once the recursion terminates. However, by now we should be getting accustomed to the idea that in functional programming, functions (operations) are also often treated as data in their own right, and used as inputs to higher-order transformations. So, in this view, the data inside a *Suspend* object might also be a reified operation, whose semantics can be transformed, or even reinterpreted as it is being parsed. In this way, one can create domain-specific languages (DSLs) using free monads and create multiple alternative interpreters to parse them - an approach that can be useful for mocking / testing some behaviors without actually running them with all their potential side-effects.
 
 Before going into specific examples, let's take a look at a possible implementation of free monads in Javascript:
 
@@ -49,11 +50,11 @@ const Suspend = (x, f) => ({
 
 {% endhighlight %}
 
-First, let's consider *Pure*. Since in native Javascript at least, we don't have the option of creating algebraic data types, we can implement a *type()* function to be able to query the variant we are working with. The canonical functions, *map()* and *flatMap()* operate exactly as one would expect. In the case of *flatMap()*, the flatmapped function g will take care of wrapping the result into a new free monad, so we don't need to do this explictly as in the case of *map()*. *toString()* will be useful for printing the Pure object to the console, and *run()* will be necessary if we want to get back the value *x* that is stored inside the Pure object.
+First, let's consider *Pure*. Since in native Javascript at least, we don't have the option of creating algebraic data types, we can implement a *type()* function to be able to query the variant we are working with at any given time. The canonical functions, *map()* and *flatMap()* operate exactly as one would expect. In the case of *flatMap()*, the flatmapped function g will take care of wrapping the result into a new free (or whatever) monad, so we don't need to do this explictly as in the case of *map()*. *toString()* will be useful for printing the Pure object to the console, and *run()* will be necessary if we want to get back the value *x* that is stored inside the Pure object.
 
-The case of *Suspend* is less trivial. Remember, in this case, we are working not only with some data *x* (whatever that may be), but also with some transformations we already want to carry out on *x* (represented by *f*). So, if we wanted to *run()* the Suspend object, we would have to call *f(x)*. If we wanted to map or flatmap a second function, *g*, onto the Suspend object, the way to go would be to return a new Suspend object that still encapsulates the same data, along with a new transformation that somehow represents a composition of the original transformation and the second transformation, *g*. But recall that in the case of *map()*, we do not expect *g* to wrap its result into the same structure that is returned by the original *f*, therefore, we need to map *g* onto *f(x)*. By contrast, in the case of *flatMap()*, we can flatmap *g* onto the output of *f* and be sure that we will obtain an analogous type.
+The case of *Suspend* is less trivial. Remember, in this case, we are working not only with some data *x* (whatever that may be), but also with some transformations we already want to carry out on *x* (represented by *f*). So, if we wanted to *run()* the Suspend object, we would have to call *f(x)*. If we wanted to map or flatmap a second function, *g*, onto the Suspend object, the way to go would be to return a new Suspend object that still encapsulates the same data, along with a new transformation that somehow represents a composition of the original transformation and the second transformation, *g*. But recall that in the case of *map()*, we do not expect *g* to wrap its result into a functor or monad (rather, it is expected to operate at the level of the data, *x*); therefore, we need to map *g* onto *f(x)* (this is the preferred solution since we do not know in advance what kind of functor or monad *f(x)* is going to return). By the same reasoning, in the case of *flatMap()*, we can flatmap *g* onto the output of *f*.
 
-Of course, in both cases, we would have to make sure that *f(x)* will return a type that has a *map(g)* or *flatmap(g)* function, respectively, and that the type of *g* conforms to either of those functions; othrewise the chain of computations would break down. To help guarantee this, for the purposes of our later examples, let's create a basic monadic wrapper that can encapsulate any basic value as follows:
+Of course, in both cases, we would have to make sure that *f(x)* will return a type that has a *map(g)* or *flatmap(g)* function, respectively, and that the signature of *g* conforms to either of those functions; otherwise the chain of computations would break down. To help guarantee this, for the purposes of our later examples, let's create a basic monadic wrapper that can encapsulate any basic value as follows:
 
 {% highlight javascript %}
 const Id = x =>
@@ -65,18 +66,18 @@ const Id = x =>
 })
 {% endhighlight %}
 
-In other words, if both *f* and *g* return values wrapped in an *Id* type, we can be sure that the *flatMap* function will always exist and that the computations won't break down.
+In other words, if both *f* and *g* return values wrapped in an *Id* type, we can be sure that the *flatMap* function will always exist and that the computations won't break down (of course, as we will see, we might have other, better alternatives in specific cases).
 
 Before moving on to some more interesting examples, let's put all of this to the test:
 
 {% highlight javascript %}
-let computation = Suspend(5, x => Id(x+1))  // A Suspend object that holds a value 5 and a function f that increments it to Id(6)
-  .flatMap(x => Id(x*2))                    // A new Suspend object that holds a value 5 and a function that first adds 1 to it, then doubles the result -> Id(12)
-  .map(result => {
+let computation = Suspend(5, x => Id(x+1))  // A Suspend object that holds a value of 5 and a function f that will increment it, then return Id(6)
+  .flatMap(x => Id(x*2))                    // A new Suspend object that holds a value of 5 and a function that will first add 1 to it, then double the result to return Id(12)
+  .map(result => {                          // A function that simply operates at the level of the 12 inside the Id(12). Since it will return 12, we get back Id(12)
     console.log(`\t\tresult of computation 2(x+1) = ${result} (where x = 5)`)
     return result
-  })                                        // a new Suspend object that holds a value 5 and a function that prints something and once mapped will still result in Id(12)
-  .flatMap(x => Id(x+1));                   // a new Suspend object that holds a value 5 and a function f that if run, will return Id(13)
+  })                                        // a new Suspend object that holds a value of 5 and a function that will something and once mapped will still result in Id(12)
+  .flatMap(x => Id(x+1));                   // a new Suspend object that holds a value of 5 and a function f that if run, will return Id(13)
 
 console.log('\nAbout to actually run!')
 console.log(`finished... ${computation.run().extract()}`) //indeed, we get 13, but 'result of computation ... = 12' is also printed
@@ -84,7 +85,9 @@ console.log(`finished... ${computation.run().extract()}`) //indeed, we get 13, b
 
 ## Simulating other monads using the free monad
 
-Since we mentioned that free monads are canonical, let's take a look at an example where we implement another monad using free monads. For this example, we consider the **Maybe monad**, which is often used to represent the results of a computation that can be either successful or fail with no result. Accordingly, an instance of the Maybe monad can be *Just(x)* (where x is the result of a successful operation), or *Nothing()*, which is a primitive representing an unsuccessful computation.
+Since we mentioned that free monads are canonical, let's take a look at an example where we implement another monad using free monads. For this example, we will consider the **Maybe monad**, which is often used to represent the results of a computation that can be either successful or fail with no result - the benefit being that when operations returning Maybe monads are chained, we do not have to worry about checking whether all intermediate computations were successful.
+
+An instance of the Maybe monad can be *Just(x)* (where x is the result of a successful operation), or *Nothing()*, which is a primitive representing an unsuccessful computation.
 
 To map the Maybe monad onto the Free monad, so to speak, we first need to *lift* these two objects into the context of Pure and Suspend. Let's take a look at how we might do this:
 
@@ -96,21 +99,21 @@ const nothing = () => ({type: () => 'maybe.nothing', toString: () => `nothing()`
 
 const liftF = operationObject => Suspend(operationObject, Pure)
 
-// when run, the uppercase Just function creates a Suspend w/ data {x, type: 'maybe.just', toString: () => `just(${x})`}}
+// when run, the uppercase Just function creates a Suspend w/ data {x, type: () => 'maybe.just', toString: () => `just(${x})`}}
 // and a promise to eventually wrap it into a Pure
 const Just = x => liftF(just(x))
-// when run, this function creates a Suspend w/ data {type: 'maybe.nothing', toString: () => `nothing()`}
+// when run, this function creates a Suspend w/ data {type: () => 'maybe.nothing', toString: () => `nothing()`}
 // and a promise to eventually wrap it into a Pure
 const Nothing = () => liftF(nothing())
 {% endhighlight %}
 
-In our application code, we will (mostly) use the capitalized versions *Just* and *Nothing*. These are both functions that either take a value (*x* in the case of *Just*) or nothing (in the case of *Nothing*) and *lift them into the context of a Suspend object*. This Suspend object promises to wrap the data that represents a lowercase *just* or *nothing* object into a *Pure* object at some later time (when the Suspend is fully finalized and run). Leaving out the *toString* functions, the data itself that represents the *just(x)* or *nothing()* objects either has the form *{x, type: () => 'maybe.just'}* or *{type: () => 'maybe.nothing'}*.
+In our application code, we will (mostly) use the capitalized versions *Just* and *Nothing*. These are both functions that either take a value (*x* in the case of *Just*) or nothing (in the case of *Nothing*) and *lift them into the context of a Suspend object*. This Suspend object promises to wrap a lowercase *just(x)* or *nothing()* object, respectively, into a *Pure* object at some later time (when the Suspend is fully finalized and run). Leaving out the *toString* functions, the data itself that represents the *just(x)* or *nothing()* objects either has the form *{x, type: () => 'maybe.just'}* or *{type: () => 'maybe.nothing'}*.
 
-Since a *Just(x)* or a *Nothing()* is now really just a *Suspend* object under the hood, in theory we can now map or flatmap other functions onto them. The benefit of storing a function *f* inside the Suspend object in each case that will return a *Pure* object is that if we flatmap a new function, *g* onto the *Suspend* object, the new *Suspend* object that we obtain will still either contain the same (lowercase) *just(x)* or *nothing()*, but the function it promises to run on it will be *Pure(...).flatmap(g)* (where the three dots are either the *just(x)* or the *nothing()*), which just translates to *g(just(x))* or *g(nothing())*.
+Since a *Just(x)* or a *Nothing()* is now really just a *Suspend* object under the hood, in theory we can map or flatmap other functions onto them. Since the internally stored function, *f* inside the *Just(x)* or a *Nothing()* is defined to (eventually) return a *Pure(just(x))* or a *Pure(nothing())*, calling *flatMap(g)* on either *Suspend* object will return a new *Suspend* object whose internally stored function, *f'* will just be a continuation on either of those *Pure* objects, i.e., *Pure(...).flatMap(g)*, where the three dots represent either the lowercase *just(x)* or *nothing()*. By definition, this expression will just translate to either *g(just(x))*, or *g(nothing())*.
 
-If, in turn, this function *g* returns either a *Just(x)* or a *Nothing()*, we can repeat this same process again and again.
+### Running our Maybe monad 
 
-The big question is, how can we actually run a chain of computations built up in this way? You might think that you could always just call *run()* on it, as usual. But apart from the most basic cases, this will not work! Consider the following examples:
+To see what will happen when we call run on such a Maybe monad, let's consider the following two examples:
 
 {% highlight javascript %}
 const maybe1 = Just(4)
@@ -127,7 +130,11 @@ console.log(`maybe2 is ${maybe2}.\nResult of run(): ${maybe2.run()}`)
 //   f({"x":"just(4)1"}) = Pure({"x":"just(4)1"})
 {% endhighlight %}
 
-In the first case, we really just have a *Suspend* object on our hands that, once run, will return the stored data wrapped inside a *Pure*. But something seems amiss in the second case. Recall that we said that flatmapping a function *g* on a *Just(x)* object will just run *Pure(just(x)).flatMap(g)*, which is the same as *g(just(x))*. So, in our case, when calling *maybe2.run()*, since *g* is *res => Just(res + 1)*, what we get back is a *Just(just(x) + 1)*. As we've said before, this in turn is just a *Suspend* object -- now containing the datum *just(x) + 1* (or in other words, *just(x)1*, since the Javascript interpreter will just treat both operands of the + operator as strings), and promising to wrap it into a *Pure* object!
+In the first case, *maybe1* is really just a *Suspend* object that, once run, will return the stored data wrapped inside a *Pure* (as per the definition of *Just(x)*).
+
+But something seems amiss in the second case. Recall that we said that flatmapping a function *g* on a *Just(x)* object will just run *Pure(just(x)).flatMap(g)*, which is the same as *g(just(x))*. So, in our case, when calling *maybe2.run()*, since *g* is *res => Just(res + 1)*, what we get back is a *Just(just(x) + 1)*. But what does this expression mean?
+
+Well, we said that *Just(x)* is actually a *Suspend* object. So, we now have a new *Suspend* object that promises to (eventually) return *Pure(just(x) + 1)*, or in other words, *Pure(just(x)1)*, since the Javascript interpreter will just treat both operands of the + operator as strings.
 
 What can we glean from this analysis?
 
@@ -135,9 +142,7 @@ What can we glean from this analysis?
 
 * But the more important point is this: When composing Suspend objects using either *map()* or *flatmap()*, we are basically just transforming the original one to represent more elaborate computations on the inside. But what those computations actually do is a different question, which we will find out when we actually run them. If at any point, such a computation returns as an intermediate result a Suspend object (i.e., a *Just(x)* or a *Nothing*), this will halt the computations until this new Suspend is actually run. In fact, all of the subsequent computations will just have the effect of transforming that new Suspend object, to encapsulate all of the remaining computations which we wanted to carry out but haven't yet gotten to!
 
-So we have two problems with running a Suspend object composed in this way. First, we don't know how many times to run it. Second, the internal data that it contains still may need to be processed in unique ways. In our case, we still need to check whether the result from the earlier computation is a *nothing()* or a *just(x)* with a value! In the former case, we would have to return a *Nothing()*, not a *Just(x)*. And in the latter case, we would still need to unpack the value inside it.
-
-Instead of taking care of the type check in every flatmapped function, we can use a special *runner* function, designed specifically for the Maybe monad (in this case). Note that we cannot implement this runner function as part of the *Pure()* and *Suspend()* functions, since in the Suspend case (see below) we cannot know in advance what data structure we are unpacking (e.g., a *Nothing()* or a *Just(x)*):
+As we will see later on, this is quite a useful feature of functions returning *Suspend* objects wrapped into *Suspend* objects, since we can reinterpret the meaning of the data at each step along the way. But right now, we just want to make sure that *run()* will be called as many times as necessary to obtain a final result, and that the values inside the *just(x)* objects get unwrapped at each step along the way. To achieve this, we can use a special *runner* function, designed specifically for the Maybe monad (in this case). Note that we cannot implement this runner function as part of the *Pure(x)* and *Suspend(x, f)* functions, since in the Suspend case (see below) we cannot know in advance what data structure we are unpacking (e.g., a *Nothing()* or a *Just(x)*):
 
 {% highlight javascript %}
 const runMaybe = capitalJorN => {
@@ -156,7 +161,7 @@ const runMaybe = capitalJorN => {
 }
 {% endhighlight %}
 
-The good news is that eventually our loop of constantly getting a new *Just(x)* (or *Nothing()*) back will terminate, and the final *Suspend*, when run, will return a *Pure* object. So we can keep calling *runMaybe()* recursively (or in this case, terminate the infinite loop). 
+The good news is that eventually our loop of constantly getting a new *Just(x)* (or *Nothing()*) back will terminate, and the final *Suspend*, when run, will return a *Pure* object. So we can rest assured that when we call *runMaybe()*, the (seemingly) infinite loop inside it will eventually terminate. 
 
 Now let's take a look at some examples:
 
@@ -173,7 +178,7 @@ const maybeExample2 = Just(4)
 console.log(`result of maybeExample2 is: ${runMaybe(maybeExample2)}\n`) // nothing()
 {% endhighlight %}
 
-Note that in the second case, the fact that the penultimate computation returned a *Nothing()* was handled seamlessly by our *runMaybe()* function.
+Note that in the second case, the fact that the penultimate computation returned a *Nothing()* was handled seamlessly by our *runMaybe()* function (even when we wanted to add 1 to the non-existent result).
 
 ## Re-interpreting abstract syntax trees using the free monad
 
@@ -282,7 +287,7 @@ console.log(runnerWithInterpreter(computationX, interpretAsString)) // (((5 + 1)
 console.log(runnerWithInterpreter(computationX, interpretAsValue)) // 2
 {% endhighlight %}
 
-This will work, assuming that we augment the definition of *Suspend*, to include a *getF()* function, which predictably will return the function itself stored in the Suspend object.Notice that since the interpreter function function returns a monad, we can now flatmap that function onto the result.
+This will work, assuming that we augment the definition of *Suspend*, to include a *getF()* function, which predictably will return the function itself stored in the Suspend object.Notice that since the interpreter function returns a monad, we can now flatmap that function onto the result.
 
 On the other hand, notice that in the case of this runner function, at no point did we invoke anything specific to the *Mul*, *Div* and *Add* objects. Based on this, we could generalize the solution and implement it as part of the *Suspend* and *Pure* data types themselves! Formally, the function we need to define is called *foldMap*, since we want to combine all of the operations (fold) into a single result, while transforming the intermediate results (map).
 
